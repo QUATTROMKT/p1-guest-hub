@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Paperclip, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2 } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2 } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead } from '../services/chatService';
