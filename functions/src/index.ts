@@ -31,16 +31,19 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       mediaUrl = body.audio.audioUrl || "";
       text = "🎤 Áudio";
     } else if (body.video) {
-      messageType = "video"; // Futuro
-      text = "🎥 Vídeo";
+      messageType = "video";
+      mediaUrl = body.video.videoUrl || "";
+      text = body.video.caption || "🎥 Vídeo";
     } else if (body.document) {
       messageType = "document";
-      text = "📄 Documento";
+      mediaUrl = body.document.documentUrl || "";
+      text = body.document.fileName || "📄 Documento";
     } else if (body.sticker) {
       messageType = "sticker";
       text = "💟 Figurinha";
     } else if (body.location) {
       messageType = "location";
+      mediaUrl = `https://maps.google.com/?q=${body.location.latitude},${body.location.longitude}`;
       text = "📍 Localização";
     }
 
@@ -57,11 +60,30 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       if (!text) text = "Mensagem Recebida";
     }
 
-    // --- IDENTIFICAR O HÓSPEDE ---
+    // --- IDENTIFICAR O HÓSPEDE (OU GRUPO) ---
     // Pega o telefone de qualquer campo possível
-    const rawPhone = body.phone || body.sender || body.chatId || "";
-    const targetPhone = rawPhone.split('@')[0].replace(/\D/g, '');
-    const guestName = body.senderName || body.chatName || "Hóspede (WhatsApp)";
+    const isGroup = body.isGroup === true;
+    let targetPhone = "";
+    let participantPhone = "";
+    let guestName = body.senderName || body.chatName || "Hóspede (WhatsApp)";
+
+    if (isGroup) {
+      // Se for grupo, o ID do grupo vem no 'phone' ou 'chatId'
+      // E quem mandou vem em 'participantPhone'
+      targetPhone = (body.phone || body.chatId || "").split('@')[0]; // ID do grupo
+      participantPhone = body.participantPhone ? body.participantPhone.split('@')[0].replace(/\D/g, '') : "Desconhecido";
+
+      // Ajusta nome para indicar que é grupo, se possível
+      if (!guestName.includes("Grupo")) {
+        // Tenta pegar nome do grupo em 'groupName' ou mantem o que veio
+        // Geralmente body.senderName é quem mandou, e não o nome do grupo em alguns webhooks
+        // Mas vamos assumir que o sistema vai tratar isso depois ou o usuário renomeia
+        // Vamos adicionar um sufixo ou prefixo visual no frontend, mas no backend salvamos o flag
+      }
+    } else {
+      const rawPhone = body.phone || body.sender || body.chatId || "";
+      targetPhone = rawPhone.split('@')[0].replace(/\D/g, '');
+    }
 
     // Se não tiver telefone, aí sim é erro
     if (targetPhone.length < 5) {
@@ -85,6 +107,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
         unreadCount: 1,
+        isGroup: isGroup,
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
       });
       guestId = newGuest.id;
@@ -105,7 +128,9 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       type: messageType,
       mediaUrl: mediaUrl,
-      status: "read"
+      status: "read",
+      isGroup: isGroup,
+      participantPhone: participantPhone || null
     });
 
     res.status(200).send("OK");

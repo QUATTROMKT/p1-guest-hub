@@ -1,15 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2 } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, Video, Users } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead
-import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead } from '../services/chatService';
+import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile } from '../services/chatService';
 import { messageTemplates } from '../data/templates';
 
-interface Message { id: string; text: string; sender: 'guest' | 'agent'; createdAt: any; type: 'text' | 'template' | 'image' | 'audio'; mediaUrl?: string; }
+interface Message {
+  id: string; text: string; sender: 'guest' | 'agent'; createdAt: any;
+  type: 'text' | 'template' | 'image' | 'audio' | 'video' | 'document' | 'location';
+  mediaUrl?: string;
+  agentName?: string;
+  isGroup?: boolean;
+  participantPhone?: string;
+}
 interface Guest {
   id: string; name: string; phone: string; avatar: string;
   status: string; tags: string[]; notes?: string; lastMessage?: string; lastMessageTime?: any;
-  unreadCount?: number; // CAMPO NOVO
+  unreadCount?: number;
+  isGroup?: boolean;
   cpf?: string; email?: string; checkinDate?: string; checkoutDate?: string;
 }
 
@@ -30,6 +38,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const agentName = auth.currentUser?.email?.split('@')[0] || "Recepcionista";
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
@@ -75,7 +84,26 @@ export default function Inbox({ initialGuestId }: InboxProps) {
     if (!newMessage.trim() || !selectedGuest) return;
     const textToSend = newMessage;
     setNewMessage('');
-    await sendMessage(selectedGuest.id, selectedGuest.phone, textToSend);
+    await sendMessage(selectedGuest.id, selectedGuest.phone, textToSend, 'text', '', agentName);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0] || !selectedGuest) return;
+    const file = e.target.files[0];
+
+    // Determinar tipo
+    let type = 'document';
+    if (file.type.startsWith('image/')) type = 'image';
+    else if (file.type.startsWith('audio/')) type = 'audio';
+    else if (file.type.startsWith('video/')) type = 'video';
+
+    try {
+      const url = await uploadFile(file);
+      await sendMessage(selectedGuest.id, selectedGuest.phone, file.name, type, url, agentName);
+    } catch (error) {
+      alert("Erro ao enviar arquivo.");
+      console.error(error);
+    }
   };
 
   const handleUpdateGuestData = async () => {
@@ -125,10 +153,10 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const filteredGuests = guests.filter(g => g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm));
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'reserva': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'checkin': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-      case 'checkout': return 'bg-slate-100 text-slate-500 border-slate-200';
-      default: return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'reserva': return 'bg-blue-600 text-white border-blue-600';
+      case 'checkin': return 'bg-emerald-600 text-white border-emerald-600';
+      case 'checkout': return 'bg-slate-600 text-white border-slate-600';
+      default: return 'bg-yellow-400 text-yellow-900 border-yellow-400';
     }
   };
 
@@ -149,12 +177,14 @@ export default function Inbox({ initialGuestId }: InboxProps) {
         <div className="flex-1 overflow-y-auto">
           {filteredGuests.map(guest => (
             <div
-              key={guest.id}
-              onClick={() => handleSelectGuest(guest)} // Clicar agora zera o contador
-              className={`p-4 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-all ${selectedGuest?.id === guest.id ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''}`}
+              onClick={() => handleSelectGuest(guest)}
+              className={`p-4 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-all ${selectedGuest?.id === guest.id ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''} ${guest.unreadCount && guest.unreadCount > 0 ? 'bg-yellow-50' : ''}`}
             >
               <div className="flex justify-between items-start mb-1">
-                <h3 className="font-bold text-slate-700 truncate flex-1">{guest.name}</h3>
+                <h3 className="font-bold text-slate-700 truncate flex-1 flex items-center gap-1">
+                  {guest.isGroup && <Users size={14} className="text-slate-400" />}
+                  {guest.name}
+                </h3>
                 <span className="text-[10px] text-slate-400 ml-2">{guest.lastMessageTime?.seconds ? new Date(guest.lastMessageTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
               </div>
 
@@ -197,7 +227,10 @@ export default function Inbox({ initialGuestId }: InboxProps) {
           <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-100/50">
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[70%] p-3 rounded-xl shadow-sm text-sm ${msg.sender === 'agent' ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'}`}>
+                <div className={`max-w-[70%] p-3 rounded-xl shadow-md text-sm ${msg.sender === 'agent'
+                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
+                    : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
+                  }`}>
                   {msg.type === 'image' && msg.mediaUrl && (
                     <div className="mb-2 rounded-lg overflow-hidden bg-slate-100">
                       <img src={msg.mediaUrl} alt="Imagem" className="w-full h-auto object-cover" loading="lazy" />
@@ -208,8 +241,34 @@ export default function Inbox({ initialGuestId }: InboxProps) {
                       <audio controls src={msg.mediaUrl} className="w-full h-8" />
                     </div>
                   )}
-                  <p dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br/>') }}></p>
-                  <span className={`text-[9px] block text-right mt-1 opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
+                  {msg.type === 'video' && msg.mediaUrl && (
+                    <div className="mb-2 rounded-lg overflow-hidden bg-black">
+                      <video controls src={msg.mediaUrl} className="w-full max-h-60" />
+                    </div>
+                  )}
+                  {msg.type === 'document' && msg.mediaUrl && (
+                    <div className="mb-2 p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
+                      <div className="bg-red-100 p-2 rounded text-red-500"><FileText size={24} /></div>
+                      <div className="flex-1 overflow-hidden">
+                        <p className="text-xs font-bold truncate text-slate-700">{msg.text || 'Documento'}</p>
+                        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Baixar Arquivo</a>
+                      </div>
+                    </div>
+                  )}
+                  {msg.type === 'location' && msg.mediaUrl && (
+                    <div className="mb-2 rounded-lg overflow-hidden border border-slate-200">
+                      <div className="bg-slate-100 p-8 flex justify-center items-center text-slate-400"><MapPin size={32} /></div>
+                      <div className="p-2 bg-white">
+                        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"><MapPin size={12} /> Ver no Google Maps</a>
+                      </div>
+                    </div>
+                  )}
+                  <p dangerouslySetInnerHTML={{ __html: (msg.text || '').replace(/\n/g, '<br/>') }}></p>
+                  <div className="flex justify-between items-end mt-1 gap-2">
+                    {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantPhone?.slice(-4) || 'Membro'}</span>}
+                    {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
+                    <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -223,7 +282,9 @@ export default function Inbox({ initialGuestId }: InboxProps) {
               </div>
             )}
             <div className="flex items-center gap-2">
-              <button onClick={() => setShowTemplates(!showTemplates)} className={`p-2 rounded-lg ${showTemplates ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400 hover:text-emerald-500'}`}><Zap size={20} /></button>
+              <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-slate-100 rounded-lg transition-colors"><Paperclip size={20} /></button>
+              <button onClick={() => setShowTemplates(!showTemplates)} className={`p-2 rounded-lg transition-colors ${showTemplates ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400 hover:text-emerald-500 hover:bg-slate-100'}`}><Zap size={20} /></button>
               <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSend()} placeholder="Digite uma mensagem..." className="flex-1 py-3 px-4 bg-slate-50 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
               <button onClick={handleSend} className="p-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-md"><Send size={20} /></button>
             </div>
@@ -242,7 +303,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
             <p className="text-sm text-slate-500 mt-1 flex justify-center items-center gap-1"><Phone size={12} /> {selectedGuest.phone}</p>
             <div className="mt-4 flex flex-col gap-2">
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Fase do Hóspede</span>
-              <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer ${getStatusColor(editData.status || 'lead')}`}>
+              <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer text-center ${getStatusColor(editData.status || 'lead')}`}>
                 <option value="lead">🟡 Em Negociação</option>
                 <option value="reserva">🔵 Reserva Confirmada</option>
                 <option value="checkin">🟢 Hóspede na Casa</option>

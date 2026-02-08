@@ -4,11 +4,12 @@ import { Sidebar } from './components/Sidebar';
 import Inbox from './pages/Inbox';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
+import Contacts from './pages/Contacts';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   // Navegação
   const [currentPage, setCurrentPage] = useState('dashboard');
   // Memória: Qual hóspede deve abrir automaticamente?
@@ -44,14 +45,18 @@ function App() {
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
       <Sidebar activePage={currentPage} onNavigate={setCurrentPage} />
-      
+
       <main className="flex-1 h-full relative">
         {currentPage === 'dashboard' && (
           <Dashboard onNavigateChat={handleGoToChat} />
         )}
-        
+
         {currentPage === 'inbox' && (
           <Inbox initialGuestId={targetGuestId} />
+        )}
+
+        {currentPage === 'contacts' && (
+          <Contacts onNavigateChat={handleGoToChat} />
         )}
       </main>
     </div>

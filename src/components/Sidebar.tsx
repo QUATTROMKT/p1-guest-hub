@@ -1,4 +1,4 @@
-import { LayoutDashboard, MessageSquare, LogOut } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, LogOut, Users } from 'lucide-react';
 import { getAuth, signOut } from 'firebase/auth';
 
 interface SidebarProps {
@@ -16,7 +16,7 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
       </div>
 
       <nav className="flex-1 flex flex-col gap-4 w-full px-2">
-        <button 
+        <button
           onClick={() => onNavigate('dashboard')}
           className={`p-3 rounded-xl transition-all group flex justify-center ${activePage === 'dashboard' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:bg-slate-50 hover:text-emerald-600'}`}
           title="Dashboard"
@@ -24,16 +24,24 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
           <LayoutDashboard size={24} />
         </button>
 
-        <button 
+        <button
           onClick={() => onNavigate('inbox')}
           className={`p-3 rounded-xl transition-all group flex justify-center ${activePage === 'inbox' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:bg-slate-50 hover:text-emerald-600'}`}
           title="Mensagens"
         >
           <MessageSquare size={24} />
         </button>
+
+        <button
+          onClick={() => onNavigate('contacts')}
+          className={`p-3 rounded-xl transition-all group flex justify-center ${activePage === 'contacts' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:bg-slate-50 hover:text-emerald-600'}`}
+          title="Contatos"
+        >
+          <Users size={24} />
+        </button>
       </nav>
 
-      <button 
+      <button
         onClick={() => signOut(getAuth())}
         className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors mt-auto"
         title="Sair"
