@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, Video, Users } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, Users } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile } from '../services/chatService';
@@ -228,8 +228,8 @@ export default function Inbox({ initialGuestId }: InboxProps) {
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[70%] p-3 rounded-xl shadow-md text-sm ${msg.sender === 'agent'
-                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
-                    : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
+                  ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
+                  : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
                   }`}>
                   {msg.type === 'image' && msg.mediaUrl && (
                     <div className="mb-2 rounded-lg overflow-hidden bg-slate-100">

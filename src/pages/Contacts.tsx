@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, User, Phone, Tag, MessageSquare, Edit, Trash2, Plus, Filter } from 'lucide-react';
-import { subscribeToGuests, deleteGuest, updateGuest } from '../services/chatService';
+import { Search, Phone, MessageSquare, Trash2, Plus, Filter } from 'lucide-react';
+import { subscribeToGuests, deleteGuest } from '../services/chatService';
 
 interface Guest {
     id: string; name: string; phone: string; avatar: string;
