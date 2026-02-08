@@ -8,7 +8,7 @@ const db = getFirestore("p1hotel");
 export const zapiWebhook = functions.https.onRequest(async (req, res) => {
   try {
     const body = req.body;
-    
+
     // --- ÚNICA REGRA DE BLOQUEIO ---
     // Se a mensagem veio do sistema/hotel, ignora para não duplicar.
     // TUDO O RESTO ENTRA.
@@ -17,26 +17,44 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       return;
     }
 
-    // --- EXTRAÇÃO DE TEXTO (BUSCA EM TUDO) ---
+    // Verificamos se é mídia primeiro para já capturar a URL
+    let mediaUrl = "";
+    let messageType = "text";
     let text = "";
-    
-    // Verifica todas as variações possíveis que a Z-API manda
-    if (body.text && body.text.message) text = body.text.message;
-    else if (typeof body.text === 'string') text = body.text;
-    else if (typeof body.message === 'string') text = body.message;
-    else if (typeof body.content === 'string') text = body.content;
-    else if (body.caption) text = body.caption; 
-    else if (body.type === 'chat' && body.body) text = body.body; // Caso raro
 
-    // Se não achou texto, verifica mídia
-    if (!text) {
-        if (body.image) text = "📷 Imagem";
-        else if (body.audio) text = "🎤 Áudio";
-        else if (body.video) text = "🎥 Vídeo";
-        else if (body.document) text = "📄 Documento";
-        else if (body.sticker) text = "💟 Figurinha";
-        else if (body.location) text = "📍 Localização";
-        else text = "Mensagem Recebida"; // Fallback final: nunca fica vazio
+    if (body.image) {
+      messageType = "image";
+      mediaUrl = body.image.imageUrl || "";
+      text = body.image.caption || "📷 Imagem";
+    } else if (body.audio) {
+      messageType = "audio";
+      mediaUrl = body.audio.audioUrl || "";
+      text = "🎤 Áudio";
+    } else if (body.video) {
+      messageType = "video"; // Futuro
+      text = "🎥 Vídeo";
+    } else if (body.document) {
+      messageType = "document";
+      text = "📄 Documento";
+    } else if (body.sticker) {
+      messageType = "sticker";
+      text = "💟 Figurinha";
+    } else if (body.location) {
+      messageType = "location";
+      text = "📍 Localização";
+    }
+
+    // Se ainda não temos texto (e não é mídia com caption), tenta extrair do padrão de texto
+    if (!text || (messageType === 'text' && !text)) {
+      if (body.text && body.text.message) text = body.text.message;
+      else if (typeof body.text === 'string') text = body.text;
+      else if (typeof body.message === 'string') text = body.message;
+      else if (typeof body.content === 'string') text = body.content;
+      else if (body.caption) text = body.caption;
+      else if (body.type === 'chat' && body.body) text = body.body;
+
+      // Fallback final
+      if (!text) text = "Mensagem Recebida";
     }
 
     // --- IDENTIFICAR O HÓSPEDE ---
@@ -66,7 +84,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         tags: ["WhatsApp"],
         lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
-        unreadCount: 1, 
+        unreadCount: 1,
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
       });
       guestId = newGuest.id;
@@ -85,7 +103,8 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       text: text,
       sender: "guest",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      type: "text",
+      type: messageType,
+      mediaUrl: mediaUrl,
       status: "read"
     });
 
