@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getAuth } from 'firebase/auth';
 import { Search, Phone, MessageSquare, Trash2, Plus, Filter } from 'lucide-react';
 import { subscribeToGuests, deleteGuest, createGuest, updateGuest } from '../services/chatService';
 import { checkAndTriggerAutomation } from '../services/automationService';
@@ -37,6 +38,8 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
     });
 
     const handleCreateContact = async (e: React.FormEvent) => {
+        const auth = getAuth();
+        const agentName = auth.currentUser?.email?.split('@')[0] || "Sistema";
         e.preventDefault();
         if (!newContact.name || !newContact.phone) return alert("Nome e Telefone são obrigatórios");
 
@@ -46,7 +49,8 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                 ...newContact,
                 avatar: `https://ui-avatars.com/api/?name=${newContact.name}&background=random`,
                 tags: ['NOVO'],
-                messages: []
+                messages: [],
+                createdBy: agentName
             });
             setIsModalOpen(false);
             setNewContact({ name: '', phone: '', email: '', cpf: '' });
@@ -60,7 +64,9 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
     };
 
     const handleUpdateStatus = async (guestId: string, newStatus: string) => {
-        await updateGuest(guestId, { status: newStatus });
+        const auth = getAuth();
+        const agentName = auth.currentUser?.email?.split('@')[0] || "Sistema";
+        await updateGuest(guestId, { status: newStatus, lastUpdatedBy: agentName });
         const guest = guests.find(g => g.id === guestId);
         if (guest) {
             const automationTriggered = await checkAndTriggerAutomation(guest.id, guest.name, guest.phone, newStatus);
@@ -77,12 +83,12 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
     };
 
     return (
-        <div className="flex h-full w-full bg-slate-50 p-8 overflow-y-auto">
+        <div className="flex h-full w-full bg-slate-50 dark:bg-slate-900 p-8 overflow-y-auto transition-colors duration-200">
             <div className="max-w-6xl mx-auto w-full">
                 <div className="flex justify-between items-center mb-8">
                     <div>
-                        <h1 className="text-3xl font-bold text-slate-800">Contatos</h1>
-                        <p className="text-slate-500">Gerencie sua base de hóspedes e leads</p>
+                        <h1 className="text-3xl font-bold text-slate-800 dark:text-white">Contatos</h1>
+                        <p className="text-slate-500 dark:text-slate-400">Gerencie sua base de hóspedes e leads</p>
                     </div>
                     <button
                         onClick={() => setIsModalOpen(true)}
@@ -92,15 +98,15 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                     </button>
                 </div>
 
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors duration-200">
                     {/* FILTROS */}
-                    <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row gap-4 items-center bg-slate-50/50">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex flex-col md:flex-row gap-4 items-center bg-slate-50/50 dark:bg-slate-800/50">
                         <div className="relative flex-1 w-full">
                             <Search className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
                             <input
                                 type="text"
                                 placeholder="Buscar por nome ou telefone..."
-                                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
                             />
@@ -110,7 +116,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                             <select
                                 value={statusFilter}
                                 onChange={e => setStatusFilter(e.target.value)}
-                                className="p-2 border border-slate-200 rounded-lg bg-white text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 flex-1"
+                                className="p-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 flex-1"
                             >
                                 <option value="all">Todos os Status</option>
                                 <option value="lead">Em Negociação</option>
@@ -124,7 +130,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                     {/* TABELA */}
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold tracking-wider">
+                            <thead className="bg-slate-50 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 uppercase text-xs font-bold tracking-wider">
                                 <tr>
                                     <th className="p-4">Hóspede</th>
                                     <th className="p-4">Status</th>
@@ -133,15 +139,15 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                     <th className="p-4 text-right">Ações</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                                 {filteredGuests.map(guest => (
-                                    <tr key={guest.id} className="hover:bg-slate-50 transition-colors">
+                                    <tr key={guest.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                                         <td className="p-4">
                                             <div className="flex items-center gap-3">
-                                                <img src={guest.avatar} className="w-10 h-10 rounded-full object-cover bg-slate-200" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${guest.name}&background=random`)} />
+                                                <img src={guest.avatar} className="w-10 h-10 rounded-full object-cover bg-slate-200 dark:bg-slate-600" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${guest.name}&background=random`)} />
                                                 <div>
-                                                    <div className="font-bold text-slate-800">{guest.name}</div>
-                                                    <div className="text-xs text-slate-400">CPF: {guest.cpf || '-'}</div>
+                                                    <div className="font-bold text-slate-800 dark:text-white">{guest.name}</div>
+                                                    <div className="text-xs text-slate-400 dark:text-slate-500">CPF: {guest.cpf || '-'}</div>
                                                 </div>
                                             </div>
                                         </td>
@@ -163,7 +169,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                         </td>
                                         <td className="p-4">
                                             <div className="flex flex-col text-sm">
-                                                <a href={`tel:${guest.phone}`} className="flex items-center gap-1 text-slate-600 hover:text-emerald-600 font-medium">
+                                                <a href={`tel:${guest.phone}`} className="flex items-center gap-1 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium">
                                                     <Phone size={14} /> {guest.phone}
                                                 </a>
                                                 <span className="text-xs text-slate-400">{guest.email || '-'}</span>
@@ -207,7 +213,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                         </table>
                     </div>
 
-                    <div className="p-4 border-t border-slate-100 bg-slate-50 text-xs text-slate-400 text-center">
+                    <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-400 text-center">
                         Exibindo {filteredGuests.length} de {guests.length} contatos
                     </div>
                 </div>
@@ -216,56 +222,56 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
             {/* MODAL NOVO CONTATO */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
-                        <h2 className="text-xl font-bold text-slate-800 mb-4">Novo Contato</h2>
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+                        <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4">Novo Contato</h2>
                         <form onSubmit={handleCreateContact} className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-600 mb-1">Nome Completo</label>
+                                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Nome Completo</label>
                                 <input
                                     type="text"
                                     required
-                                    className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-700 text-slate-800 dark:text-white"
                                     value={newContact.name}
                                     onChange={e => setNewContact({ ...newContact, name: e.target.value })}
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-slate-600 mb-1">Telefone (Whatsapp)</label>
+                                <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Telefone (Whatsapp)</label>
                                 <input
                                     type="text"
                                     required
                                     placeholder="5511999999999"
-                                    className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-700 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                     value={newContact.phone}
                                     onChange={e => setNewContact({ ...newContact, phone: e.target.value })}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-600 mb-1">Email (Opcional)</label>
+                                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Email (Opcional)</label>
                                     <input
                                         type="email"
-                                        className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                                        className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-700 text-slate-800 dark:text-white"
                                         value={newContact.email}
                                         onChange={e => setNewContact({ ...newContact, email: e.target.value })}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-600 mb-1">CPF (Opcional)</label>
+                                    <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">CPF (Opcional)</label>
                                     <input
                                         type="text"
-                                        className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                                        className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-slate-700 text-slate-800 dark:text-white"
                                         value={newContact.cpf}
                                         onChange={e => setNewContact({ ...newContact, cpf: e.target.value })}
                                     />
                                 </div>
                             </div>
 
-                            <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
+                            <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-slate-700">
                                 <button
                                     type="button"
                                     onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors"
+                                    className="flex-1 py-2 text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
                                 >
                                     Cancelar
                                 </button>

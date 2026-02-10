@@ -1,14 +1,16 @@
-import { LayoutDashboard, MessageSquare, LogOut, Users, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, LogOut, Users, ClipboardList, Moon, Sun } from 'lucide-react';
 import { getAuth, signOut } from 'firebase/auth';
 
 interface SidebarProps {
   activePage: string;
   onNavigate: (page: string) => void;
+  theme: string;
+  onToggleTheme: () => void;
 }
 
-export function Sidebar({ activePage, onNavigate }: SidebarProps) {
+export function Sidebar({ activePage, onNavigate, theme, onToggleTheme }: SidebarProps) {
   return (
-    <aside className="w-20 bg-white border-r border-slate-200 flex flex-col items-center py-6 shadow-sm z-20">
+    <aside className="w-20 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col items-center py-6 shadow-sm z-20 transition-colors duration-200">
       <div className="mb-8 p-2 bg-emerald-100 rounded-xl">
         <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
           P1
@@ -49,13 +51,23 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
         </button>
       </nav>
 
-      <button
-        onClick={() => signOut(getAuth())}
-        className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors mt-auto"
-        title="Sair"
-      >
-        <LogOut size={24} />
-      </button>
+      <div className="mt-auto flex flex-col items-center gap-4 mb-4">
+        <button
+          onClick={onToggleTheme}
+          className="p-3 text-slate-400 hover:text-emerald-600 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
+          title={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+        >
+          {theme === 'dark' ? <Sun size={24} /> : <Moon size={24} />}
+        </button>
+
+        <button
+          onClick={() => signOut(getAuth())}
+          className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+          title="Sair"
+        >
+          <LogOut size={24} />
+        </button>
+      </div>
     </aside>
   );
 }

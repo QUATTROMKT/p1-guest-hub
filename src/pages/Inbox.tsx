@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, Users, ClipboardList } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead e services
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
 import { checkAndTriggerAutomation } from '../services/automationService';
-import { messageTemplates } from '../data/templates';
+
 
 interface Message {
   id: string; text: string; sender: 'guest' | 'agent'; createdAt: any;
@@ -32,7 +32,6 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [newTag, setNewTag] = useState('');
   const [localNote, setLocalNote] = useState('');
-  const [showTemplates, setShowTemplates] = useState(false);
   const [editData, setEditData] = useState<Partial<Guest>>({});
 
   const auth = getAuth();
@@ -81,11 +80,18 @@ export default function Inbox({ initialGuestId }: InboxProps) {
     }
   };
 
-  const handleSend = async () => {
+  const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedGuest) return;
     const textToSend = newMessage;
     setNewMessage('');
     await sendMessage(selectedGuest.id, selectedGuest.phone, textToSend, 'text', '', agentName);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,7 +115,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
 
   const handleUpdateGuestData = async () => {
     if (!selectedGuest) return;
-    await updateGuest(selectedGuest.id, { ...editData });
+    await updateGuest(selectedGuest.id, { ...editData, lastUpdatedBy: agentName });
     setSelectedGuest(prev => prev ? ({ ...prev, ...editData }) : null);
     alert("Dados salvos!");
   };
@@ -126,7 +132,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const handleStatusChange = async (newStatus: string) => {
     if (!selectedGuest) return;
     setEditData(prev => ({ ...prev, status: newStatus }));
-    await updateGuest(selectedGuest.id, { status: newStatus });
+    await updateGuest(selectedGuest.id, { status: newStatus, lastUpdatedBy: agentName });
 
     // Automação
     const automationTriggered = await checkAndTriggerAutomation(selectedGuest.id, selectedGuest.name, selectedGuest.phone, newStatus);
@@ -146,7 +152,8 @@ export default function Inbox({ initialGuestId }: InboxProps) {
       await createTask({
         title: taskTitle,
         guestName: selectedGuest.name,
-        status: 'pending'
+        status: 'pending',
+        createdBy: agentName
       });
       alert("✅ Tarefa criada com sucesso! Verifique a aba Tarefas.");
     } catch (error) {
@@ -162,19 +169,18 @@ export default function Inbox({ initialGuestId }: InboxProps) {
     const updatedTags = [...currentTags, newTag.trim()];
     setSelectedGuest({ ...selectedGuest, tags: updatedTags });
     setNewTag('');
-    await updateGuest(selectedGuest.id, { tags: updatedTags });
+    await updateGuest(selectedGuest.id, { tags: updatedTags, lastUpdatedBy: agentName });
   };
   const handleRemoveTag = async (tagToRemove: string) => {
     if (!selectedGuest) return;
     const updatedTags = selectedGuest.tags?.filter(t => t !== tagToRemove) || [];
     setSelectedGuest({ ...selectedGuest, tags: updatedTags });
-    await updateGuest(selectedGuest.id, { tags: updatedTags });
+    await updateGuest(selectedGuest.id, { tags: updatedTags, lastUpdatedBy: agentName });
   };
   const handleSaveNote = async () => {
     if (!selectedGuest) return;
-    if (localNote !== selectedGuest.notes) { await updateGuest(selectedGuest.id, { notes: localNote }); }
+    if (localNote !== selectedGuest.notes) { await updateGuest(selectedGuest.id, { notes: localNote, lastUpdatedBy: agentName }); }
   };
-  const handleSelectTemplate = (text: string) => { setNewMessage(text); setShowTemplates(false); };
 
   const filteredGuests = guests.filter(g => g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm));
   const getStatusColor = (status: string) => {
@@ -187,189 +193,252 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   };
 
   return (
-    <div className="flex h-full w-full bg-slate-50 text-slate-900 font-sans overflow-hidden">
-
-      {/* COLUNA 1: LISTA */}
-      <div className={`${selectedGuest ? 'hidden md:flex' : 'flex'} flex-none w-full md:w-80 bg-white border-r border-slate-200 flex-col h-full z-20`}>
-        <div className="p-4 border-b border-slate-100 bg-white">
-          <h1 className="text-xl font-bold text-slate-800 mb-4 flex justify-between items-center">
-            Inbox <span className="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded-full">{guests.length}</span>
-          </h1>
+    <div className="flex h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
+      {/* LISTA LATERAL */}
+      <div className="w-80 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-colors duration-200">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-700">
+          <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4">Mensagens</h2>
           <div className="relative">
             <Search className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
-            <input type="text" placeholder="Buscar..." className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            <input
+              type="text"
+              placeholder="Buscar..."
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
+              value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            />
           </div>
         </div>
+
         <div className="flex-1 overflow-y-auto">
           {filteredGuests.map(guest => (
             <div
+              key={guest.id}
               onClick={() => handleSelectGuest(guest)}
-              className={`p-4 border-b border-slate-50 cursor-pointer hover:bg-slate-50 transition-all ${selectedGuest?.id === guest.id ? 'bg-emerald-50 border-l-4 border-l-emerald-500' : ''} ${guest.unreadCount && guest.unreadCount > 0 ? 'bg-yellow-50' : ''}`}
+              className={`p-4 border-b border-slate-50 dark:border-slate-700/50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors ${selectedGuest?.id === guest.id ? 'bg-emerald-50 dark:bg-emerald-900/20 border-l-4 border-l-emerald-500' : ''}`}
             >
-              <div className="flex justify-between items-start mb-1">
-                <h3 className="font-bold text-slate-700 truncate flex-1 flex items-center gap-1">
-                  {guest.isGroup && <Users size={14} className="text-slate-400" />}
-                  {guest.name}
-                </h3>
-                <span className="text-[10px] text-slate-400 ml-2">{guest.lastMessageTime?.seconds ? new Date(guest.lastMessageTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-              </div>
-
-              <div className="flex justify-between items-center mt-1">
-                <p className={`text-sm truncate max-w-[80%] ${guest.unreadCount && guest.unreadCount > 0 ? 'font-bold text-slate-800' : 'text-slate-500'}`}>
-                  {guest.lastMessage}
-                </p>
-
-                {/* --- A BOLINHA VERDE --- */}
-                {guest.unreadCount && guest.unreadCount > 0 ? (
-                  <div className="w-5 h-5 bg-emerald-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm animate-pulse">
-                    {guest.unreadCount}
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <img src={guest.avatar} className="w-12 h-12 rounded-full object-cover bg-slate-200 dark:bg-slate-600" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${guest.name}&background=random`)} />
+                  {guest.unreadCount && guest.unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white dark:border-slate-800">
+                      {guest.unreadCount}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start">
+                    <h3 className={`font-bold truncate ${selectedGuest?.id === guest.id ? 'text-emerald-900 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{guest.name}</h3>
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                      {guest.lastMessageTime?.seconds ? new Date(guest.lastMessageTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
                   </div>
-                ) : null}
-              </div>
-
-              <div className="flex gap-1 mt-2 flex-wrap items-center">
-                <span className={`w-2 h-2 rounded-full ${getStatusColor(guest.status || 'lead').replace('bg-', 'bg-').split(' ')[0]}`}></span>
-                {guest.tags?.slice(0, 2).map(tag => (<span key={tag} className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded border border-slate-200 uppercase font-semibold">{tag}</span>))}
+                  <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{guest.lastMessage}</p>
+                </div>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* COLUNA 2: CHAT */}
-      {selectedGuest ? (
-        <div className="flex-1 flex flex-col bg-[#efeae2] relative h-full min-w-0 z-10">
-          <div className="bg-white p-3 border-b border-slate-200 flex justify-between items-center shadow-sm z-10">
-            <div className="flex items-center gap-3">
-              <button onClick={() => setSelectedGuest(null)} className="md:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-full"><ArrowLeft size={20} /></button>
-              <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden"><img src={selectedGuest.avatar} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} /></div>
-              <div><h2 className="font-bold text-slate-800">{selectedGuest.name}</h2><p className="text-xs text-slate-500">Online</p></div>
+      {/* ÁREA DE CHAT - CONTEÚDO */}
+      <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-900/50 transition-colors duration-200">
+        {!selectedGuest ? (
+          <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500 flex-col gap-4">
+            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center">
+              <MessageSquare size={32} />
             </div>
-            <div className="flex items-center gap-2">
-              <div className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full hidden sm:block">Atendente: <b>{agentName}</b></div>
-              <button onClick={() => setSelectedGuest(null)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full"><X size={20} /></button>
-            </div>
+            <p>Selecione uma conversa para iniciar</p>
           </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-100/50">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[70%] p-3 rounded-xl shadow-md text-sm ${msg.sender === 'agent'
-                  ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
-                  : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
-                  }`}>
-                  {msg.type === 'image' && msg.mediaUrl && (
-                    <div className="mb-2 rounded-lg overflow-hidden bg-slate-100">
-                      <img src={msg.mediaUrl} alt="Imagem" className="w-full h-auto object-cover" loading="lazy" />
-                    </div>
-                  )}
-                  {msg.type === 'audio' && msg.mediaUrl && (
-                    <div className="mb-2 flex items-center justify-center bg-slate-100 rounded-lg p-2 min-w-[200px]">
-                      <audio controls src={msg.mediaUrl} className="w-full h-8" />
-                    </div>
-                  )}
-                  {msg.type === 'video' && msg.mediaUrl && (
-                    <div className="mb-2 rounded-lg overflow-hidden bg-black">
-                      <video controls src={msg.mediaUrl} className="w-full max-h-60" />
-                    </div>
-                  )}
-                  {msg.type === 'document' && msg.mediaUrl && (
-                    <div className="mb-2 p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
-                      <div className="bg-red-100 p-2 rounded text-red-500"><FileText size={24} /></div>
-                      <div className="flex-1 overflow-hidden">
-                        <p className="text-xs font-bold truncate text-slate-700">{msg.text || 'Documento'}</p>
-                        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Baixar Arquivo</a>
+        ) : (
+          <>
+            {/* HEADER DO CHAT */}
+            <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm z-10">
+              <div className="flex items-center gap-3">
+                <img src={selectedGuest.avatar} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
+                <div>
+                  <h2 className="font-bold text-slate-800 dark:text-white">{selectedGuest.name}</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Online
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-100/50 dark:bg-slate-900/20">
+              {messages.map((msg) => (
+                <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[70%] p-3 rounded-xl shadow-md text-sm ${msg.sender === 'agent'
+                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
+                    : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-600 rounded-tl-none'
+                    }`}>
+                    {msg.type === 'image' && msg.mediaUrl && (
+                      <div className="mb-2 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-600">
+                        <img src={msg.mediaUrl} alt="Imagem" className="w-full h-auto object-cover" loading="lazy" />
                       </div>
-                    </div>
-                  )}
-                  {msg.type === 'location' && msg.mediaUrl && (
-                    <div className="mb-2 rounded-lg overflow-hidden border border-slate-200">
-                      <div className="bg-slate-100 p-8 flex justify-center items-center text-slate-400"><MapPin size={32} /></div>
-                      <div className="p-2 bg-white">
-                        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"><MapPin size={12} /> Ver no Google Maps</a>
+                    )}
+                    {msg.type === 'audio' && msg.mediaUrl && (
+                      <div className="mb-2 flex items-center justify-center bg-slate-100 dark:bg-slate-600 rounded-lg p-2 min-w-[200px]">
+                        <audio controls src={msg.mediaUrl} className="w-full h-8" />
                       </div>
+                    )}
+                    {msg.type === 'video' && msg.mediaUrl && (
+                      <div className="mb-2 rounded-lg overflow-hidden bg-black">
+                        <video controls src={msg.mediaUrl} className="w-full max-h-60" />
+                      </div>
+                    )}
+                    {msg.type === 'document' && msg.mediaUrl && (
+                      <div className="mb-2 p-3 bg-slate-50 dark:bg-slate-600 border border-slate-200 dark:border-slate-500 rounded-lg flex items-center gap-3">
+                        <div className="bg-red-100 p-2 rounded text-red-500"><FileText size={24} /></div>
+                        <div className="flex-1 overflow-hidden">
+                          <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{msg.text || 'Documento'}</p>
+                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Baixar Arquivo</a>
+                        </div>
+                      </div>
+                    )}
+                    {msg.type === 'location' && msg.mediaUrl && (
+                      <div className="mb-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
+                        <div className="bg-slate-100 dark:bg-slate-600 p-8 flex justify-center items-center text-slate-400"><MapPin size={32} /></div>
+                        <div className="p-2 bg-white dark:bg-slate-700">
+                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"><MapPin size={12} /> Ver no Google Maps</a>
+                        </div>
+                      </div>
+                    )}
+                    <p dangerouslySetInnerHTML={{ __html: (msg.text || '').replace(/\n/g, '<br/>') }}></p>
+                    <div className="flex justify-between items-end mt-1 gap-2">
+                      {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantPhone?.slice(-4) || 'Membro'}</span>}
+                      {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
+                      <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-300'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
                     </div>
-                  )}
-                  <p dangerouslySetInnerHTML={{ __html: (msg.text || '').replace(/\n/g, '<br/>') }}></p>
-                  <div className="flex justify-between items-end mt-1 gap-2">
-                    {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantPhone?.slice(-4) || 'Membro'}</span>}
-                    {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
-                    <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
+                  </div>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+            {/* INPUT AREA */}
+            <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded-xl border border-slate-200 dark:border-slate-600 focus-within:ring-2 ring-emerald-500 transition-all">
+                <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 dark:text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-600 rounded-lg transition-colors">
+                  <Paperclip size={20} />
+                </button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  accept="image/*,audio/*,video/*,application/pdf"
+                />
+                <textarea
+                  value={newMessage}
+                  onChange={e => setNewMessage(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  placeholder="Digite sua mensagem..."
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-none max-h-24 py-2"
+                  rows={1}
+                />
+                <button onClick={handleSendMessage} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-md transition-transform active:scale-95">
+                  <Send size={20} />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* BARRA LATERAL DIREITA - DETALHES */}
+      <div className="w-80 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 overflow-y-auto hidden xl:block transition-colors duration-200">
+        {selectedGuest ? (
+          <>
+            <div className="p-6 text-center border-b border-slate-100 dark:border-slate-700">
+              <div className="w-20 h-20 mx-auto rounded-full bg-slate-100 dark:bg-slate-700 mb-4 overflow-hidden border-4 border-white dark:border-slate-700 shadow-lg">
+                <img src={selectedGuest.avatar} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
+              </div>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white">{selectedGuest.name}</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex justify-center items-center gap-1"><Phone size={12} /> {selectedGuest.phone}</p>
+
+              <button
+                onClick={handleCreateTask}
+                className="mt-4 w-full py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-600 hover:text-emerald-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+              >
+                <ClipboardList size={14} /> Criar Solicitação
+              </button>
+
+              <div className="mt-4 flex flex-col gap-2">
+                <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Fase do Hóspede</span>
+                <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer text-center dark:bg-slate-800 ${getStatusColor(editData.status || 'lead')}`}>
+                  <option value="lead">Em Negociação</option>
+                  <option value="reserva">Reserva Confirmada</option>
+                  <option value="checkin">Check-in Realizado</option>
+                  <option value="checkout">Check-out</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div>
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2"><CreditCard size={12} /> Dados do Hóspede</h3>
+                <div className="space-y-3">
+                  <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">CPF</label><input type="text" value={editData.cpf} onChange={(e) => setEditData({ ...editData, cpf: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" placeholder="000.000.000-00" /></div>
+                  <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Email</label><input type="text" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" placeholder="email@exemplo.com" /></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Check-in</label><input type="date" value={editData.checkinDate} onChange={(e) => setEditData({ ...editData, checkinDate: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" /></div>
+                    <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Check-out</label><input type="date" value={editData.checkoutDate} onChange={(e) => setEditData({ ...editData, checkoutDate: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" /></div>
+                  </div>
+                  <button onClick={handleUpdateGuestData} className="w-full py-2 bg-slate-800 text-white rounded text-xs font-bold hover:bg-slate-700 flex justify-center gap-2 items-center"><Save size={14} /> Salvar Ficha</button>
+                </div>
+              </div>
+
+              <div className="mt-8 text-left">
+                <h3 className="font-bold text-slate-800 dark:text-white mb-3 text-sm flex items-center gap-2"><Tag size={16} /> Tags</h3>
+                <div className="flex flex-wrap gap-2">
+                  {selectedGuest.tags?.map(tag => (
+                    <span key={tag} className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md text-xs font-bold flex items-center gap-1 group">
+                      {tag}
+                      <button onClick={() => handleRemoveTag(tag)} className="text-slate-400 hover:text-red-500"><X size={12} /></button>
+                    </span>
+                  ))}
+
+                  <div className="flex items-center gap-1 w-full mt-2">
+                    <input
+                      type="text"
+                      placeholder="+ Tag..."
+                      className="flex-1 px-2 py-1 border border-slate-200 dark:border-slate-600 rounded-md text-xs focus:ring-2 focus:ring-emerald-500 outline-none dark:bg-slate-700 dark:text-white"
+                      value={newTag}
+                      onChange={e => setNewTag(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAddTag()}
+                    />
+                    <button onClick={handleAddTag} className="p-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-md"><Plus size={14} /></button>
                   </div>
                 </div>
               </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-          <div className="p-3 bg-white border-t border-slate-200 relative">
-            {showTemplates && (
-              <div className="absolute bottom-full left-4 mb-2 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50">
-                <div className="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center"><span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Respostas Rápidas</span><button onClick={() => setShowTemplates(false)}><X size={14} className="text-slate-400 hover:text-red-500" /></button></div>
-                <div className="max-h-60 overflow-y-auto">{messageTemplates.map(tmpl => (<button key={tmpl.id} onClick={() => handleSelectTemplate(tmpl.text)} className="w-full text-left p-3 hover:bg-emerald-50 border-b border-slate-50"><div className="font-bold text-slate-700 text-sm">{tmpl.title}</div><div className="text-xs text-slate-400 truncate mt-1">{tmpl.text}</div></button>))}</div>
+
+              <div>
+                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Notas Internas</h3>
+                <textarea
+                  value={localNote}
+                  onChange={(e) => setLocalNote(e.target.value)}
+                  onBlur={handleSaveNote}
+                  className="w-full h-24 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 text-sm text-slate-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none placeholder:text-yellow-700/50 dark:placeholder:text-yellow-400/50"
+                  placeholder="Digite observações..."
+                />
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 text-right">Salvo automaticamente</p>
               </div>
-            )}
-            <div className="flex items-center gap-2">
-              <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-slate-100 rounded-lg transition-colors"><Paperclip size={20} /></button>
-              <button onClick={() => setShowTemplates(!showTemplates)} className={`p-2 rounded-lg transition-colors ${showTemplates ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400 hover:text-emerald-500 hover:bg-slate-100'}`}><Zap size={20} /></button>
-              <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSend()} placeholder="Digite uma mensagem..." className="flex-1 py-3 px-4 bg-slate-50 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              <button onClick={handleSend} className="p-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-md"><Send size={20} /></button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="hidden md:flex flex-1 flex-col items-center justify-center text-slate-300 bg-slate-50"><User size={64} className="mb-4 opacity-20" /><p className="text-lg">Selecione um hóspede</p></div>
-      )}
 
-      {/* COLUNA 3: DETALHES */}
-      {selectedGuest && (
-        <div className="hidden lg:flex flex-none w-80 bg-white border-l border-slate-200 flex-col h-full overflow-y-auto z-20">
-          <div className="p-6 text-center border-b border-slate-100">
-            <div className="w-20 h-20 mx-auto rounded-full bg-slate-100 mb-4 overflow-hidden border-4 border-white shadow-lg"><img src={selectedGuest.avatar} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} /></div>
-            <h2 className="text-lg font-bold text-slate-800">{selectedGuest.name}</h2>
-            <p className="text-sm text-slate-500 mt-1 flex justify-center items-center gap-1"><Phone size={12} /> {selectedGuest.phone}</p>
-
-            <button
-              onClick={handleCreateTask}
-              className="mt-4 w-full py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 hover:text-emerald-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-            >
-              <ClipboardList size={14} /> Criar Solicitação
-            </button>
-
-            <div className="mt-4 flex flex-col gap-2">
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Fase do Hóspede</span>
-              <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer text-center ${getStatusColor(editData.status || 'lead')}`}>
-                <option value="lead">🟡 Em Negociação</option>
-                <option value="reserva">🔵 Reserva Confirmada</option>
-                <option value="checkin">🟢 Hóspede na Casa</option>
-                <option value="checkout">⚪ Finalizado</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="p-6 space-y-6">
-            <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2"><CreditCard size={12} /> Dados do Hóspede</h3>
-              <div className="space-y-3">
-                <div><label className="text-[10px] text-slate-500 uppercase">CPF</label><input type="text" value={editData.cpf} onChange={(e) => setEditData({ ...editData, cpf: e.target.value })} className="w-full p-2 bg-slate-50 border border-slate-200 rounded text-sm" placeholder="000.000.000-00" /></div>
-                <div><label className="text-[10px] text-slate-500 uppercase">Email</label><input type="text" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} className="w-full p-2 bg-slate-50 border border-slate-200 rounded text-sm" placeholder="email@exemplo.com" /></div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><label className="text-[10px] text-slate-500 uppercase">Check-in</label><input type="date" value={editData.checkinDate} onChange={(e) => setEditData({ ...editData, checkinDate: e.target.value })} className="w-full p-2 bg-slate-50 border border-slate-200 rounded text-sm" /></div>
-                  <div><label className="text-[10px] text-slate-500 uppercase">Check-out</label><input type="date" value={editData.checkoutDate} onChange={(e) => setEditData({ ...editData, checkoutDate: e.target.value })} className="w-full p-2 bg-slate-50 border border-slate-200 rounded text-sm" /></div>
-                </div>
-                <button onClick={handleUpdateGuestData} className="w-full py-2 bg-slate-800 text-white rounded text-xs font-bold hover:bg-slate-700 flex justify-center gap-2 items-center"><Save size={14} /> Salvar Ficha</button>
+              <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
+                <button
+                  onClick={handleDeleteGuest}
+                  className="w-full py-2 border border-red-100 dark:border-red-900/30 text-red-500 dark:text-red-400 rounded-lg text-xs font-bold hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Trash2 size={14} /> Excluir Contato
+                </button>
               </div>
             </div>
-            <div className="border-t border-slate-100 pt-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2"><Tag size={12} /> Etiquetas</h3>
-              <div className="flex flex-wrap gap-2 mb-2">{selectedGuest.tags?.map(tag => (<span key={tag} className="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium border border-emerald-200 flex items-center gap-1">{tag}<button onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag); }}><X size={10} /></button></span>))}</div><div className="flex gap-2"><input type="text" value={newTag} onChange={(e) => setNewTag(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAddTag()} placeholder="Nova tag..." className="flex-1 px-3 py-1 text-xs border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500" /><button onClick={handleAddTag} className="p-1 bg-slate-100 text-slate-500 rounded-full hover:bg-emerald-500 hover:text-white"><Plus size={16} /></button></div>
-            </div>
-            <div><h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Notas Internas</h3><textarea value={localNote} onChange={(e) => setLocalNote(e.target.value)} onBlur={handleSaveNote} className="w-full h-24 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none placeholder:text-yellow-700/50" placeholder="Digite observações..."></textarea><p className="text-[10px] text-slate-400 mt-1 text-right">Salvo automaticamente</p></div>
-            <div className="pt-6 border-t border-slate-100">
-              <button onClick={handleDeleteGuest} className="w-full py-3 border border-red-100 text-red-500 rounded-lg hover:bg-red-50 text-xs font-bold flex items-center justify-center gap-2 transition-colors"><Trash2 size={16} /> Excluir Cadastro</button>
-            </div>
+          </>
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center text-slate-300 dark:text-slate-600">
+            <User size={64} className="mb-4 opacity-20" />
+            <p className="text-lg">Selecione um hóspede</p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -16,6 +16,22 @@ function App() {
   // Memória: Qual hóspede deve abrir automaticamente?
   const [targetGuestId, setTargetGuestId] = useState<string | null>(null);
 
+  // Tema
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -44,8 +60,8 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
-      <Sidebar activePage={currentPage} onNavigate={setCurrentPage} />
+    <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 overflow-hidden font-sans transition-colors duration-200">
+      <Sidebar activePage={currentPage} onNavigate={setCurrentPage} theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 h-full relative">
         {currentPage === 'dashboard' && (
