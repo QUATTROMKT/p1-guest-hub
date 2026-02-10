@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getAuth } from 'firebase/auth';
-import { Search, Phone, MessageSquare, Trash2, Plus, Filter } from 'lucide-react';
+import { Search, Phone, MessageSquare, Trash2, Plus, Filter, Pencil } from 'lucide-react';
 import { subscribeToGuests, deleteGuest, createGuest, updateGuest } from '../services/chatService';
 import { checkAndTriggerAutomation } from '../services/automationService';
 
@@ -8,6 +8,7 @@ interface Guest {
     id: string; name: string; phone: string; avatar: string;
     status: string; tags: string[]; notes?: string; lastMessage?: string; lastMessageTime?: any;
     email?: string; cpf?: string;
+    createdBy?: string; lastUpdatedBy?: string;
 }
 
 interface ContactsProps {
@@ -21,6 +22,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [newContact, setNewContact] = useState({ name: '', phone: '', email: '', cpf: '' });
     const [isLoading, setIsLoading] = useState(false);
 
@@ -42,25 +44,45 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
         const agentName = auth.currentUser?.email?.split('@')[0] || "Sistema";
         e.preventDefault();
         if (!newContact.name || !newContact.phone) return alert("Nome e Telefone são obrigatórios");
-
         setIsLoading(true);
+
         try {
-            await createGuest({
-                ...newContact,
-                avatar: `https://ui-avatars.com/api/?name=${newContact.name}&background=random`,
-                tags: ['NOVO'],
-                messages: [],
-                createdBy: agentName
-            });
+            if (editingId) {
+                await updateGuest(editingId, {
+                    ...newContact,
+                    lastUpdatedBy: agentName
+                });
+                alert("Contato atualizado com sucesso!");
+            } else {
+                await createGuest({
+                    ...newContact,
+                    avatar: `https://ui-avatars.com/api/?name=${newContact.name}&background=random`,
+                    tags: ['NOVO'],
+                    messages: [],
+                    createdBy: agentName
+                });
+                alert("Contato criado com sucesso!");
+            }
             setIsModalOpen(false);
             setNewContact({ name: '', phone: '', email: '', cpf: '' });
-            alert("Contato criado com sucesso!");
+            setEditingId(null);
         } catch (error) {
             console.error(error);
-            alert("Erro ao criar contato");
+            alert("Erro ao salvar contato");
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleEdit = (guest: Guest) => {
+        setNewContact({
+            name: guest.name,
+            phone: guest.phone,
+            email: guest.email || '',
+            cpf: guest.cpf || ''
+        });
+        setEditingId(guest.id);
+        setIsModalOpen(true);
     };
 
     const handleUpdateStatus = async (guestId: string, newStatus: string) => {
@@ -91,7 +113,11 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                         <p className="text-slate-500 dark:text-slate-400">Gerencie sua base de hóspedes e leads</p>
                     </div>
                     <button
-                        onClick={() => setIsModalOpen(true)}
+                        onClick={() => {
+                            setEditingId(null);
+                            setNewContact({ name: '', phone: '', email: '', cpf: '' });
+                            setIsModalOpen(true);
+                        }}
                         className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-emerald-700 shadow-lg transition-all transform hover:scale-105"
                     >
                         <Plus size={20} /> Novo Contato
@@ -143,7 +169,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                 {filteredGuests.map(guest => (
                                     <tr key={guest.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                                         <td className="p-4">
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-3" title={`Criado por: ${guest.createdBy || 'Sistema'}\nAtualizado por: ${guest.lastUpdatedBy || '-'}`}>
                                                 <img src={guest.avatar} className="w-10 h-10 rounded-full object-cover bg-slate-200 dark:bg-slate-600" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${guest.name}&background=random`)} />
                                                 <div>
                                                     <div className="font-bold text-slate-800 dark:text-white">{guest.name}</div>
@@ -192,6 +218,13 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                                     <MessageSquare size={18} />
                                                 </button>
                                                 <button
+                                                    onClick={() => handleEdit(guest)}
+                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    title="Editar"
+                                                >
+                                                    <Pencil size={18} />
+                                                </button>
+                                                <button
                                                     onClick={() => handleDelete(guest)}
                                                     className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                                                     title="Excluir"
@@ -223,7 +256,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
-                        <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4">Novo Contato</h2>
+                        <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4">{editingId ? 'Editar Contato' : 'Novo Contato'}</h2>
                         <form onSubmit={handleCreateContact} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">Nome Completo</label>

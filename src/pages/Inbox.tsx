@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead e services
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
 import { checkAndTriggerAutomation } from '../services/automationService';
+import { messageTemplates } from '../data/templates';
 
 
 interface Message {
@@ -20,6 +21,7 @@ interface Guest {
   unreadCount?: number;
   isGroup?: boolean;
   cpf?: string; email?: string; checkinDate?: string; checkoutDate?: string;
+  createdBy?: string; lastUpdatedBy?: string;
 }
 
 interface InboxProps { initialGuestId?: string | null; }
@@ -32,6 +34,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [newTag, setNewTag] = useState('');
   const [localNote, setLocalNote] = useState('');
+  const [showTemplates, setShowTemplates] = useState(false);
   const [editData, setEditData] = useState<Partial<Guest>>({});
 
   const auth = getAuth();
@@ -62,7 +65,8 @@ export default function Inbox({ initialGuestId }: InboxProps) {
         email: selectedGuest.email || '',
         checkinDate: selectedGuest.checkinDate || '',
         checkoutDate: selectedGuest.checkoutDate || '',
-        status: selectedGuest.status || 'lead'
+        status: selectedGuest.status || 'lead',
+        name: selectedGuest.name || ''
       });
       const unsubscribe = subscribeToMessages(selectedGuest.id, (data: any[]) => {
         setMessages(data as Message[]);
@@ -181,6 +185,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
     if (!selectedGuest) return;
     if (localNote !== selectedGuest.notes) { await updateGuest(selectedGuest.id, { notes: localNote, lastUpdatedBy: agentName }); }
   };
+  const handleSelectTemplate = (text: string) => { setNewMessage(text); setShowTemplates(false); };
 
   const filteredGuests = guests.filter(g => g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm));
   const getStatusColor = (status: string) => {
@@ -219,7 +224,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <img src={guest.avatar} className="w-12 h-12 rounded-full object-cover bg-slate-200 dark:bg-slate-600" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${guest.name}&background=random`)} />
-                  {guest.unreadCount && guest.unreadCount > 0 && (
+                  {!!guest.unreadCount && guest.unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white dark:border-slate-800">
                       {guest.unreadCount}
                     </span>
@@ -315,7 +320,31 @@ export default function Inbox({ initialGuestId }: InboxProps) {
             </div>
             {/* INPUT AREA */}
             <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
-              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded-xl border border-slate-200 dark:border-slate-600 focus-within:ring-2 ring-emerald-500 transition-all">
+              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded-xl border border-slate-200 dark:border-slate-600 focus-within:ring-2 ring-emerald-500 transition-all relative">
+                {showTemplates && (
+                  <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 max-h-80 overflow-y-auto z-50">
+                    <div className="p-3 border-b border-slate-100 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wider">
+                      Mensagens Rápidas
+                    </div>
+                    {messageTemplates.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => handleSelectTemplate(t.text)}
+                        className="w-full text-left p-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 transition-colors border-b border-slate-50 dark:border-slate-700/50 last:border-0"
+                      >
+                        <span className="font-bold block text-xs mb-1">{t.title}</span>
+                        <span className="text-[10px] opacity-70 line-clamp-2">{t.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowTemplates(!showTemplates)}
+                  className={`p-2 rounded-lg transition-colors ${showTemplates ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400 dark:text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-600'}`}
+                  title="Mensagens Rápidas"
+                >
+                  <Zap size={20} />
+                </button>
                 <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 dark:text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-600 rounded-lg transition-colors">
                   <Paperclip size={20} />
                 </button>
@@ -351,7 +380,12 @@ export default function Inbox({ initialGuestId }: InboxProps) {
               <div className="w-20 h-20 mx-auto rounded-full bg-slate-100 dark:bg-slate-700 mb-4 overflow-hidden border-4 border-white dark:border-slate-700 shadow-lg">
                 <img src={selectedGuest.avatar} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
               </div>
-              <h2 className="text-lg font-bold text-slate-800 dark:text-white">{selectedGuest.name}</h2>
+              <input
+                type="text"
+                value={editData.name || selectedGuest.name}
+                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                className="text-lg font-bold text-slate-800 dark:text-white bg-transparent border-b border-transparent focus:border-emerald-500 outline-none text-center w-full"
+              />
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex justify-center items-center gap-1"><Phone size={12} /> {selectedGuest.phone}</p>
 
               <button
@@ -429,6 +463,14 @@ export default function Inbox({ initialGuestId }: InboxProps) {
                 >
                   <Trash2 size={14} /> Excluir Contato
                 </button>
+              </div>
+              <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 text-center space-y-1">
+                {selectedGuest.lastUpdatedBy && (
+                  <p className="text-[10px] text-slate-400">Atualizado por: {selectedGuest.lastUpdatedBy}</p>
+                )}
+                {selectedGuest.createdBy && (
+                  <p className="text-[10px] text-slate-400">Criado por: {selectedGuest.createdBy}</p>
+                )}
               </div>
             </div>
           </>

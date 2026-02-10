@@ -65,7 +65,7 @@ function App() {
 
       <main className="flex-1 h-full relative">
         {currentPage === 'dashboard' && (
-          <Dashboard onNavigateChat={handleGoToChat} />
+          <Dashboard />
         )}
 
         {currentPage === 'inbox' && (
