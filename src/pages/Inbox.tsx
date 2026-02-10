@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, Users } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, Zap, ArrowLeft, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, Users, ClipboardList } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
-// Importamos a nova função markAsRead
-import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile } from '../services/chatService';
+// Importamos a nova função markAsRead e services
+import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
+import { checkAndTriggerAutomation } from '../services/automationService';
 import { messageTemplates } from '../data/templates';
 
 interface Message {
@@ -126,7 +127,32 @@ export default function Inbox({ initialGuestId }: InboxProps) {
     if (!selectedGuest) return;
     setEditData(prev => ({ ...prev, status: newStatus }));
     await updateGuest(selectedGuest.id, { status: newStatus });
+
+    // Automação
+    const automationTriggered = await checkAndTriggerAutomation(selectedGuest.id, selectedGuest.name, selectedGuest.phone, newStatus);
+    if (automationTriggered) {
+      alert(`Automação disparada: ${automationTriggered}`);
+    }
+
     setSelectedGuest(prev => prev ? ({ ...prev, status: newStatus }) : null);
+  };
+
+  const handleCreateTask = async () => {
+    if (!selectedGuest) return;
+    const taskTitle = window.prompt("O que precisa ser feito para este hóspede?");
+    if (!taskTitle) return;
+
+    try {
+      await createTask({
+        title: taskTitle,
+        guestName: selectedGuest.name,
+        status: 'pending'
+      });
+      alert("✅ Tarefa criada com sucesso! Verifique a aba Tarefas.");
+    } catch (error) {
+      console.error("Erro ao criar tarefa", error);
+      alert("Erro ao criar tarefa.");
+    }
   };
 
   const handleAddTag = async () => {
@@ -301,6 +327,14 @@ export default function Inbox({ initialGuestId }: InboxProps) {
             <div className="w-20 h-20 mx-auto rounded-full bg-slate-100 mb-4 overflow-hidden border-4 border-white shadow-lg"><img src={selectedGuest.avatar} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} /></div>
             <h2 className="text-lg font-bold text-slate-800">{selectedGuest.name}</h2>
             <p className="text-sm text-slate-500 mt-1 flex justify-center items-center gap-1"><Phone size={12} /> {selectedGuest.phone}</p>
+
+            <button
+              onClick={handleCreateTask}
+              className="mt-4 w-full py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-50 hover:text-emerald-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+            >
+              <ClipboardList size={14} /> Criar Solicitação
+            </button>
+
             <div className="mt-4 flex flex-col gap-2">
               <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Fase do Hóspede</span>
               <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer text-center ${getStatusColor(editData.status || 'lead')}`}>

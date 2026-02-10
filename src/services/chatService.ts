@@ -134,3 +134,32 @@ export const markAsRead = async (guestId: string) => {
   const guestRef = doc(db, "guests", guestId);
   await updateDoc(guestRef, { unreadCount: 0 });
 };
+
+// --- TAREFAS ---
+
+export const subscribeToTasks = (cb: (data: any[]) => void) => {
+  const q = query(collection(db, "tasks"), orderBy("createdAt", "desc"));
+  return onSnapshot(q, (snap) => {
+    const tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    cb(tasks);
+  });
+};
+
+export const createTask = async (data: any) => {
+  const docRef = await addDoc(collection(db, "tasks"), {
+    ...data,
+    createdAt: serverTimestamp(),
+    status: 'pending'
+  });
+  return docRef.id;
+};
+
+export const updateTask = async (taskId: string, data: any) => {
+  const taskRef = doc(db, "tasks", taskId);
+  await updateDoc(taskRef, data);
+};
+
+export const deleteTask = async (taskId: string) => {
+  const taskRef = doc(db, "tasks", taskId);
+  await deleteDoc(taskRef);
+};

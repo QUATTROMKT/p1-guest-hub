@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Phone, MessageSquare, Trash2, Plus, Filter } from 'lucide-react';
 import { subscribeToGuests, deleteGuest, createGuest, updateGuest } from '../services/chatService';
+import { checkAndTriggerAutomation } from '../services/automationService';
 
 interface Guest {
     id: string; name: string; phone: string; avatar: string;
@@ -60,6 +61,13 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
 
     const handleUpdateStatus = async (guestId: string, newStatus: string) => {
         await updateGuest(guestId, { status: newStatus });
+        const guest = guests.find(g => g.id === guestId);
+        if (guest) {
+            const automationTriggered = await checkAndTriggerAutomation(guest.id, guest.name, guest.phone, newStatus);
+            if (automationTriggered) {
+                alert(`Automação disparada: ${automationTriggered}`);
+            }
+        }
     };
 
     const handleDelete = async (guest: Guest) => {

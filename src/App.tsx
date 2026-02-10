@@ -5,6 +5,7 @@ import Inbox from './pages/Inbox';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Contacts from './pages/Contacts';
+import Tasks from './pages/Tasks';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -57,6 +58,10 @@ function App() {
 
         {currentPage === 'contacts' && (
           <Contacts onNavigateChat={handleGoToChat} />
+        )}
+
+        {currentPage === 'tasks' && (
+          <Tasks />
         )}
       </main>
     </div>

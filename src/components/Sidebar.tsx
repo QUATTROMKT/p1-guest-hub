@@ -1,4 +1,4 @@
-import { LayoutDashboard, MessageSquare, LogOut, Users } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, LogOut, Users, ClipboardList } from 'lucide-react';
 import { getAuth, signOut } from 'firebase/auth';
 
 interface SidebarProps {
@@ -38,6 +38,14 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
           title="Contatos"
         >
           <Users size={24} />
+        </button>
+
+        <button
+          onClick={() => onNavigate('tasks')}
+          className={`p-3 rounded-xl transition-all group flex justify-center ${activePage === 'tasks' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:bg-slate-50 hover:text-emerald-600'}`}
+          title="Tarefas"
+        >
+          <ClipboardList size={24} />
         </button>
       </nav>
 
