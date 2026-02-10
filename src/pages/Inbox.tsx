@@ -5,6 +5,7 @@ import { getAuth } from 'firebase/auth';
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
 import { checkAndTriggerAutomation } from '../services/automationService';
 import { messageTemplates } from '../data/templates';
+import { getAgentName } from '../utils/authUtils';
 
 
 interface Message {
@@ -38,7 +39,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const [editData, setEditData] = useState<Partial<Guest>>({});
 
   const auth = getAuth();
-  const agentName = auth.currentUser?.email?.split('@')[0] || "Recepcionista";
+  const agentName = getAgentName(auth.currentUser);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);

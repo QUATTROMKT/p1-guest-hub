@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { Search, Phone, MessageSquare, Trash2, Plus, Filter, Pencil } from 'lucide-react';
 import { subscribeToGuests, deleteGuest, createGuest, updateGuest } from '../services/chatService';
 import { checkAndTriggerAutomation } from '../services/automationService';
+import { getAgentName } from '../utils/authUtils';
 
 interface Guest {
     id: string; name: string; phone: string; avatar: string;
@@ -41,7 +42,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
 
     const handleCreateContact = async (e: React.FormEvent) => {
         const auth = getAuth();
-        const agentName = auth.currentUser?.email?.split('@')[0] || "Sistema";
+        const agentName = getAgentName(auth.currentUser);
         e.preventDefault();
         if (!newContact.name || !newContact.phone) return alert("Nome e Telefone são obrigatórios");
         setIsLoading(true);
@@ -87,7 +88,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
 
     const handleUpdateStatus = async (guestId: string, newStatus: string) => {
         const auth = getAuth();
-        const agentName = auth.currentUser?.email?.split('@')[0] || "Sistema";
+        const agentName = getAgentName(auth.currentUser);
         await updateGuest(guestId, { status: newStatus, lastUpdatedBy: agentName });
         const guest = guests.find(g => g.id === guestId);
         if (guest) {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getAuth } from 'firebase/auth'; // Import auth
 import { ClipboardList, Plus, CheckCircle, Circle, Trash2, Home, User } from 'lucide-react';
 import { subscribeToTasks, createTask, updateTask, deleteTask } from '../services/chatService';
+import { getAgentName } from '../utils/authUtils';
 
 interface Task {
     id: string;
@@ -30,7 +31,7 @@ export default function Tasks() {
         e.preventDefault();
         if (!newTask.title) return;
         const auth = getAuth();
-        const agentName = auth.currentUser?.email?.split('@')[0] || "Sistema";
+        const agentName = getAgentName(auth.currentUser);
 
         await createTask({
             ...newTask,
