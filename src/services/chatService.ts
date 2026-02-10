@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -10,7 +11,7 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
 
 const app = initializeApp(firebaseConfig);
 const db = initializeFirestore(app, {}, "p1hotel");
@@ -106,6 +107,17 @@ export const sendMessage = async (
     console.error("Erro Z-API:", error);
     alert("Erro ao enviar. Verifique conexão.");
   }
+};
+
+export const createGuest = async (data: any) => {
+  const docRef = await addDoc(collection(db, "guests"), {
+    ...data,
+    createdAt: serverTimestamp(),
+    lastMessageTime: serverTimestamp(),
+    unreadCount: 0,
+    status: 'lead' // default status
+  });
+  return docRef.id;
 };
 
 export const updateGuest = async (guestId: string, data: any) => {

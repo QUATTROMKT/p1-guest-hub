@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Phone, MessageSquare, Trash2, Plus, Filter } from 'lucide-react';
-import { subscribeToGuests, deleteGuest } from '../services/chatService';
+import { subscribeToGuests, deleteGuest, createGuest, updateGuest } from '../services/chatService';
 
 interface Guest {
     id: string; name: string; phone: string; avatar: string;
@@ -17,6 +17,11 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
 
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [newContact, setNewContact] = useState({ name: '', phone: '', email: '', cpf: '' });
+    const [isLoading, setIsLoading] = useState(false);
+
     useEffect(() => {
         const unsubscribe = subscribeToGuests((data: any[]) => {
             setGuests(data as Guest[]);
@@ -30,13 +35,31 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
         return matchesSearch && matchesStatus;
     });
 
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'reserva': return <span className="px-2 py-1 rounded-full text-xs font-bold bg-blue-600 text-white">Reserva Confirmada</span>;
-            case 'checkin': return <span className="px-2 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white">Hóspede na Casa</span>;
-            case 'checkout': return <span className="px-2 py-1 rounded-full text-xs font-bold bg-slate-600 text-white">Finalizado</span>;
-            default: return <span className="px-2 py-1 rounded-full text-xs font-bold bg-yellow-400 text-yellow-900">Em Negociação</span>;
+    const handleCreateContact = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newContact.name || !newContact.phone) return alert("Nome e Telefone são obrigatórios");
+
+        setIsLoading(true);
+        try {
+            await createGuest({
+                ...newContact,
+                avatar: `https://ui-avatars.com/api/?name=${newContact.name}&background=random`,
+                tags: ['NOVO'],
+                messages: []
+            });
+            setIsModalOpen(false);
+            setNewContact({ name: '', phone: '', email: '', cpf: '' });
+            alert("Contato criado com sucesso!");
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao criar contato");
+        } finally {
+            setIsLoading(false);
         }
+    };
+
+    const handleUpdateStatus = async (guestId: string, newStatus: string) => {
+        await updateGuest(guestId, { status: newStatus });
     };
 
     const handleDelete = async (guest: Guest) => {
@@ -53,7 +76,10 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                         <h1 className="text-3xl font-bold text-slate-800">Contatos</h1>
                         <p className="text-slate-500">Gerencie sua base de hóspedes e leads</p>
                     </div>
-                    <button className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-emerald-700 shadow-lg transition-all transform hover:scale-105">
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-emerald-700 shadow-lg transition-all transform hover:scale-105"
+                    >
                         <Plus size={20} /> Novo Contato
                     </button>
                 </div>
@@ -112,11 +138,26 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                             </div>
                                         </td>
                                         <td className="p-4">
-                                            {getStatusBadge(guest.status)}
+                                            <select
+                                                value={guest.status}
+                                                onChange={(e) => handleUpdateStatus(guest.id, e.target.value)}
+                                                className={`px-2 py-1 rounded-full text-xs font-bold border-none outline-none cursor-pointer appearance-none text-center w-full max-w-[140px]
+                                                    ${guest.status === 'reserva' ? 'bg-blue-100 text-blue-700' :
+                                                        guest.status === 'checkin' ? 'bg-emerald-100 text-emerald-700' :
+                                                            guest.status === 'checkout' ? 'bg-slate-100 text-slate-700' :
+                                                                'bg-yellow-100 text-yellow-700'}`}
+                                            >
+                                                <option value="lead">Em Negociação</option>
+                                                <option value="reserva">Reserva Confirmada</option>
+                                                <option value="checkin">Hóspede na Casa</option>
+                                                <option value="checkout">Finalizado</option>
+                                            </select>
                                         </td>
                                         <td className="p-4">
                                             <div className="flex flex-col text-sm">
-                                                <span className="flex items-center gap-1 text-slate-600"><Phone size={12} /> {guest.phone}</span>
+                                                <a href={`tel:${guest.phone}`} className="flex items-center gap-1 text-slate-600 hover:text-emerald-600 font-medium">
+                                                    <Phone size={14} /> {guest.phone}
+                                                </a>
                                                 <span className="text-xs text-slate-400">{guest.email || '-'}</span>
                                             </div>
                                         </td>
@@ -163,6 +204,75 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                     </div>
                 </div>
             </div>
+
+            {/* MODAL NOVO CONTATO */}
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+                        <h2 className="text-xl font-bold text-slate-800 mb-4">Novo Contato</h2>
+                        <form onSubmit={handleCreateContact} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1">Nome Completo</label>
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    value={newContact.name}
+                                    onChange={e => setNewContact({ ...newContact, name: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1">Telefone (Whatsapp)</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="5511999999999"
+                                    className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                                    value={newContact.phone}
+                                    onChange={e => setNewContact({ ...newContact, phone: e.target.value })}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-600 mb-1">Email (Opcional)</label>
+                                    <input
+                                        type="email"
+                                        className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                                        value={newContact.email}
+                                        onChange={e => setNewContact({ ...newContact, email: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-600 mb-1">CPF (Opcional)</label>
+                                    <input
+                                        type="text"
+                                        className="w-full p-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                                        value={newContact.cpf}
+                                        onChange={e => setNewContact({ ...newContact, cpf: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsModalOpen(false)}
+                                    className="flex-1 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isLoading}
+                                    className="flex-1 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors shadow-lg disabled:opacity-50"
+                                >
+                                    {isLoading ? 'Salvando...' : 'Salvar Contato'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
