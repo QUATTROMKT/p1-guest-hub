@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Contacts from './pages/Contacts';
 import Tasks from './pages/Tasks';
+import Reports from './pages/Reports';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -66,6 +67,10 @@ function App() {
       <main className="flex-1 h-full relative">
         {currentPage === 'dashboard' && (
           <Dashboard />
+        )}
+
+        {currentPage === 'reports' && (
+          <Reports />
         )}
 
         {currentPage === 'inbox' && (

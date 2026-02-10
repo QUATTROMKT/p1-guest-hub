@@ -1,4 +1,4 @@
-import { LayoutDashboard, MessageSquare, LogOut, Users, ClipboardList, Moon, Sun } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, LogOut, Users, ClipboardList, Moon, Sun, BarChart3 } from 'lucide-react';
 import { getAuth, signOut } from 'firebase/auth';
 
 interface SidebarProps {
@@ -48,6 +48,14 @@ export function Sidebar({ activePage, onNavigate, theme, onToggleTheme }: Sideba
           title="Tarefas"
         >
           <ClipboardList size={24} />
+        </button>
+
+        <button
+          onClick={() => onNavigate('reports')}
+          className={`p-3 rounded-xl transition-all group flex justify-center ${activePage === 'reports' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:bg-slate-50 hover:text-emerald-600'}`}
+          title="Relatórios"
+        >
+          <BarChart3 size={24} />
         </button>
       </nav>
 
