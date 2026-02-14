@@ -14,10 +14,11 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
-  const totalConversations = guests.length; // Conversas (numero de conversas unicas)
+  const validGuests = guests.filter(g => g.status !== 'internal');
+  const totalConversations = validGuests.length; // Conversas (exclui equipe)
   const activeGuests = guests.filter(g => g.status === 'checkin').length; // Hóspedes ativos (conta somente após mudança de status checkin)
   const confirmedReservations = guests.filter(g => g.status === 'reserva').length; // Reservas confirmadas (somente após mudança de status reserva)
-  const unreadMessages = guests.reduce((acc, g) => acc + (g.unreadCount || 0), 0); // Mensagens não lidas
+  const unreadMessages = validGuests.reduce((acc, g) => acc + (g.unreadCount || 0), 0); // Mensagens não lidas (exclui equipe)
 
   if (loading) return <div className="p-8 flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div></div>;
 

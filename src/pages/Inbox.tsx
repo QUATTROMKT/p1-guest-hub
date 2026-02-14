@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film, Shield } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead e services
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
@@ -173,9 +173,18 @@ export default function Inbox({ initialGuestId }: InboxProps) {
     const currentTags = selectedGuest.tags || [];
     if (currentTags.includes(newTag.trim())) { setNewTag(''); return; }
     const updatedTags = [...currentTags, newTag.trim()];
-    setSelectedGuest({ ...selectedGuest, tags: updatedTags });
+
+    // Automação: Se for funcionário, muda status para internal
+    let newStatus = selectedGuest.status;
+    if (newTag.trim().toLowerCase() === 'funcionário' || newTag.trim().toLowerCase() === 'funcionario') {
+      newStatus = 'internal';
+      await updateGuest(selectedGuest.id, { tags: updatedTags, status: 'internal', lastUpdatedBy: agentName });
+    } else {
+      await updateGuest(selectedGuest.id, { tags: updatedTags, lastUpdatedBy: agentName });
+    }
+
+    setSelectedGuest({ ...selectedGuest, tags: updatedTags, status: newStatus });
     setNewTag('');
-    await updateGuest(selectedGuest.id, { tags: updatedTags, lastUpdatedBy: agentName });
   };
   const handleRemoveTag = async (tagToRemove: string) => {
     if (!selectedGuest) return;
@@ -195,6 +204,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
       case 'reserva': return 'bg-blue-600 text-white border-blue-600';
       case 'checkin': return 'bg-emerald-600 text-white border-emerald-600';
       case 'checkout': return 'bg-slate-600 text-white border-slate-600';
+      case 'internal': return 'bg-purple-600 text-white border-purple-600';
       default: return 'bg-yellow-400 text-yellow-900 border-yellow-400';
     }
   };
@@ -246,7 +256,12 @@ export default function Inbox({ initialGuestId }: InboxProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
-                    <h3 className={`font-bold truncate ${selectedGuest?.id === guest.id ? 'text-emerald-900 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{guest.name}</h3>
+                    <h3 className={`font-bold truncate flex items-center gap-1 ${selectedGuest?.id === guest.id ? 'text-emerald-900 dark:text-emerald-400' :
+                        (guest.tags?.includes('Funcionário') || guest.status === 'internal') ? 'text-purple-700 dark:text-purple-400' : 'text-slate-800 dark:text-slate-200'
+                      }`}>
+                      {guest.name}
+                      {(guest.tags?.includes('Funcionário') || guest.status === 'internal') && <Shield size={12} className="text-purple-600 fill-purple-100" />}
+                    </h3>
                     <span className="text-[10px] text-slate-400 whitespace-nowrap">
                       {guest.lastMessageTime?.seconds ? new Date(guest.lastMessageTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </span>
@@ -275,7 +290,14 @@ export default function Inbox({ initialGuestId }: InboxProps) {
               <div className="flex items-center gap-3">
                 <img src={selectedGuest.avatar} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
                 <div>
-                  <h2 className="font-bold text-slate-800 dark:text-white">{selectedGuest.name}</h2>
+                  <h2 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    {selectedGuest.name}
+                    {(selectedGuest.tags?.includes('Funcionário') || selectedGuest.status === 'internal') && (
+                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] rounded-full border border-purple-200 flex items-center gap-1">
+                        <Shield size={10} /> Equipe
+                      </span>
+                    )}
+                  </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
                     <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Online
                   </p>
