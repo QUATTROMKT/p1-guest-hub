@@ -113,9 +113,9 @@ export default function Inbox({ initialGuestId }: InboxProps) {
     try {
       const url = await uploadFile(file);
       await sendMessage(selectedGuest.id, selectedGuest.phone, file.name, type, url, agentName);
-    } catch (error: any) {
-      console.error("Erro detalhado de upload:", error);
-      alert(`Erro ao enviar arquivo: ${error.message || 'Erro desconhecido'} (Code: ${error.code || 'N/A'})`);
+    } catch (error) {
+      console.error("Erro ao enviar arquivo:", error);
+      alert("Erro ao enviar arquivo. Verifique o console ou a conexão.");
     }
   };
 
