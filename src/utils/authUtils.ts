@@ -15,3 +15,9 @@ export const getAgentName = (user: User | null): string => {
     // Capitalizar primeira letra (ex: danise -> Danise)
     return namePart.charAt(0).toUpperCase() + namePart.slice(1);
 };
+
+export const hasReportsAccess = (user: User | null): boolean => {
+    if (!user || !user.email) return false;
+    const email = user.email.toLowerCase();
+    return email.includes('admin') || email === 'fabricio@p1.com';
+};

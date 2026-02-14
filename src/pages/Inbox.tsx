@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead e services
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
@@ -36,6 +36,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const [newTag, setNewTag] = useState('');
   const [localNote, setLocalNote] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details' | 'media'>('details');
   const [editData, setEditData] = useState<Partial<Guest>>({});
 
   const auth = getAuth();
@@ -197,6 +198,18 @@ export default function Inbox({ initialGuestId }: InboxProps) {
       default: return 'bg-yellow-400 text-yellow-900 border-yellow-400';
     }
   };
+
+  const getTagStyle = (tag: string) => {
+    if (tag.toLowerCase() === 'funcionário' || tag.toLowerCase() === 'funcionario') {
+      return 'bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700';
+    }
+    if (tag.toLowerCase() === 'vip') {
+      return 'bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700';
+    }
+    return 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-transparent';
+  };
+
+  const mediaMessages = messages.filter(m => ['image', 'video', 'document'].includes(m.type));
 
   return (
     <div className="flex h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
@@ -377,103 +390,158 @@ export default function Inbox({ initialGuestId }: InboxProps) {
       <div className="w-80 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 overflow-y-auto hidden xl:block transition-colors duration-200">
         {selectedGuest ? (
           <>
-            <div className="p-6 text-center border-b border-slate-100 dark:border-slate-700">
-              <div className="w-20 h-20 mx-auto rounded-full bg-slate-100 dark:bg-slate-700 mb-4 overflow-hidden border-4 border-white dark:border-slate-700 shadow-lg">
-                <img src={selectedGuest.avatar} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
-              </div>
-              <input
-                type="text"
-                value={editData.name || selectedGuest.name}
-                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                className="text-lg font-bold text-slate-800 dark:text-white bg-transparent border-b border-transparent focus:border-emerald-500 outline-none text-center w-full"
-              />
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex justify-center items-center gap-1"><Phone size={12} /> {selectedGuest.phone}</p>
-
-              <button
-                onClick={handleCreateTask}
-                className="mt-4 w-full py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-600 hover:text-emerald-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-              >
-                <ClipboardList size={14} /> Criar Solicitação
-              </button>
-
-              <div className="mt-4 flex flex-col gap-2">
-                <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Fase do Hóspede</span>
-                <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer text-center dark:bg-slate-800 ${getStatusColor(editData.status || 'lead')}`}>
-                  <option value="lead">Em Negociação</option>
-                  <option value="reserva">Reserva Confirmada</option>
-                  <option value="checkin">Check-in Realizado</option>
-                  <option value="checkout">Check-out</option>
-                </select>
-              </div>
+            <div className="flex border-b border-slate-100 dark:border-slate-700">
+              <button onClick={() => setActiveTab('details')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'details' ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>Dados</button>
+              <button onClick={() => setActiveTab('media')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'media' ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>Mídia ({mediaMessages.length})</button>
             </div>
 
-            <div className="p-6 space-y-6">
-              <div>
-                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2"><CreditCard size={12} /> Dados do Hóspede</h3>
-                <div className="space-y-3">
-                  <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">CPF</label><input type="text" value={editData.cpf} onChange={(e) => setEditData({ ...editData, cpf: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" placeholder="000.000.000-00" /></div>
-                  <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Email</label><input type="text" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" placeholder="email@exemplo.com" /></div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Check-in</label><input type="date" value={editData.checkinDate} onChange={(e) => setEditData({ ...editData, checkinDate: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" /></div>
-                    <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Check-out</label><input type="date" value={editData.checkoutDate} onChange={(e) => setEditData({ ...editData, checkoutDate: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" /></div>
+            {activeTab === 'details' ? (
+              <>
+                <div className="p-6 text-center border-b border-slate-100 dark:border-slate-700">
+                  <div className="w-20 h-20 mx-auto rounded-full bg-slate-100 dark:bg-slate-700 mb-4 overflow-hidden border-4 border-white dark:border-slate-700 shadow-lg">
+                    <img src={selectedGuest.avatar} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
                   </div>
-                  <button onClick={handleUpdateGuestData} className="w-full py-2 bg-slate-800 text-white rounded text-xs font-bold hover:bg-slate-700 flex justify-center gap-2 items-center"><Save size={14} /> Salvar Ficha</button>
+                  <input
+                    type="text"
+                    value={editData.name || selectedGuest.name}
+                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                    className="text-lg font-bold text-slate-800 dark:text-white bg-transparent border-b border-transparent focus:border-emerald-500 outline-none text-center w-full"
+                  />
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex justify-center items-center gap-1"><Phone size={12} /> {selectedGuest.phone}</p>
+
+                  <button
+                    onClick={handleCreateTask}
+                    className="mt-4 w-full py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-600 hover:text-emerald-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                  >
+                    <ClipboardList size={14} /> Criar Solicitação
+                  </button>
+
+                  <div className="mt-4 flex flex-col gap-2">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Fase do Hóspede</span>
+                    <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer text-center dark:bg-slate-800 ${getStatusColor(editData.status || 'lead')}`}>
+                      <option value="lead">Em Negociação</option>
+                      <option value="reserva">Reserva Confirmada</option>
+                      <option value="checkin">Check-in Realizado</option>
+                      <option value="checkout">Check-out</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-8 text-left">
-                <h3 className="font-bold text-slate-800 dark:text-white mb-3 text-sm flex items-center gap-2"><Tag size={16} /> Tags</h3>
-                <div className="flex flex-wrap gap-2">
-                  {selectedGuest.tags?.map(tag => (
-                    <span key={tag} className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md text-xs font-bold flex items-center gap-1 group">
-                      {tag}
-                      <button onClick={() => handleRemoveTag(tag)} className="text-slate-400 hover:text-red-500"><X size={12} /></button>
-                    </span>
-                  ))}
+                <div className="p-6 space-y-6">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2"><CreditCard size={12} /> Dados do Hóspede</h3>
+                    <div className="space-y-3">
+                      <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">CPF</label><input type="text" value={editData.cpf} onChange={(e) => setEditData({ ...editData, cpf: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" placeholder="000.000.000-00" /></div>
+                      <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Email</label><input type="text" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" placeholder="email@exemplo.com" /></div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Check-in</label><input type="date" value={editData.checkinDate} onChange={(e) => setEditData({ ...editData, checkinDate: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" /></div>
+                        <div><label className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Check-out</label><input type="date" value={editData.checkoutDate} onChange={(e) => setEditData({ ...editData, checkoutDate: e.target.value })} className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-800 dark:text-white" /></div>
+                      </div>
+                      <button onClick={handleUpdateGuestData} className="w-full py-2 bg-slate-800 text-white rounded text-xs font-bold hover:bg-slate-700 flex justify-center gap-2 items-center"><Save size={14} /> Salvar Ficha</button>
+                    </div>
+                  </div>
 
-                  <div className="flex items-center gap-1 w-full mt-2">
-                    <input
-                      type="text"
-                      placeholder="+ Tag..."
-                      className="flex-1 px-2 py-1 border border-slate-200 dark:border-slate-600 rounded-md text-xs focus:ring-2 focus:ring-emerald-500 outline-none dark:bg-slate-700 dark:text-white"
-                      value={newTag}
-                      onChange={e => setNewTag(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleAddTag()}
+                  <div className="mt-8 text-left">
+                    <h3 className="font-bold text-slate-800 dark:text-white mb-3 text-sm flex items-center gap-2"><Tag size={16} /> Tags</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedGuest.tags?.map(tag => (
+                        <span key={tag} className={`px-2 py-1 rounded-md text-xs font-bold flex items-center gap-1 group transition-colors ${getTagStyle(tag)}`}>
+                          {tag}
+                          <button onClick={() => handleRemoveTag(tag)} className="opacity-60 hover:opacity-100 hover:text-red-500"><X size={12} /></button>
+                        </span>
+                      ))}
+
+                      <div className="flex items-center gap-1 w-full mt-2">
+                        <input
+                          type="text"
+                          placeholder="+ Tag..."
+                          className="flex-1 px-2 py-1 border border-slate-200 dark:border-slate-600 rounded-md text-xs focus:ring-2 focus:ring-emerald-500 outline-none dark:bg-slate-700 dark:text-white"
+                          value={newTag}
+                          onChange={e => setNewTag(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleAddTag()}
+                        />
+                        <button onClick={handleAddTag} className="p-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-md"><Plus size={14} /></button>
+                      </div>
+                      {/* Sugestão de Tag Rápida */}
+                      <div className="mt-2 flex gap-2">
+                        {!selectedGuest.tags?.includes('Funcionário') && (
+                          <button onClick={() => { setNewTag('Funcionário'); setTimeout(handleAddTag, 100); }} className="text-[10px] px-2 py-1 bg-purple-50 text-purple-600 border border-purple-100 rounded-full hover:bg-purple-100 transition-colors">
+                            + Funcionário
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Notas Internas</h3>
+                    <textarea
+                      value={localNote}
+                      onChange={(e) => setLocalNote(e.target.value)}
+                      onBlur={handleSaveNote}
+                      className="w-full h-24 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 text-sm text-slate-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none placeholder:text-yellow-700/50 dark:placeholder:text-yellow-400/50"
+                      placeholder="Digite observações..."
                     />
-                    <button onClick={handleAddTag} className="p-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-md"><Plus size={14} /></button>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 text-right">Salvo automaticamente</p>
+                  </div>
+
+                  <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
+                    <button
+                      onClick={handleDeleteGuest}
+                      className="w-full py-2 border border-red-100 dark:border-red-900/30 text-red-500 dark:text-red-400 rounded-lg text-xs font-bold hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Trash2 size={14} /> Excluir Contato
+                    </button>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 text-center space-y-1">
+                    {selectedGuest.lastUpdatedBy && (
+                      <p className="text-[10px] text-slate-400">Atualizado por: {selectedGuest.lastUpdatedBy}</p>
+                    )}
+                    {selectedGuest.createdBy && (
+                      <p className="text-[10px] text-slate-400">Criado por: {selectedGuest.createdBy}</p>
+                    )}
                   </div>
                 </div>
-              </div>
+              </>
+            ) : (
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/30 min-h-full">
+                <h3 className="font-bold text-slate-700 dark:text-white mb-4 flex items-center gap-2"><ImageIcon size={18} /> Galeria de Mídia</h3>
 
-              <div>
-                <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Notas Internas</h3>
-                <textarea
-                  value={localNote}
-                  onChange={(e) => setLocalNote(e.target.value)}
-                  onBlur={handleSaveNote}
-                  className="w-full h-24 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 text-sm text-slate-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-none placeholder:text-yellow-700/50 dark:placeholder:text-yellow-400/50"
-                  placeholder="Digite observações..."
-                />
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 text-right">Salvo automaticamente</p>
-              </div>
-
-              <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
-                <button
-                  onClick={handleDeleteGuest}
-                  className="w-full py-2 border border-red-100 dark:border-red-900/30 text-red-500 dark:text-red-400 rounded-lg text-xs font-bold hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center gap-2 transition-colors"
-                >
-                  <Trash2 size={14} /> Excluir Contato
-                </button>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 text-center space-y-1">
-                {selectedGuest.lastUpdatedBy && (
-                  <p className="text-[10px] text-slate-400">Atualizado por: {selectedGuest.lastUpdatedBy}</p>
+                {mediaMessages.length === 0 ? (
+                  <div className="text-center py-10 text-slate-400">
+                    <ImageIcon size={48} className="mx-auto mb-2 opacity-20" />
+                    <p>Nenhuma mídia compartilhada</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {mediaMessages.map(msg => (
+                      <div key={msg.id} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                        {msg.type === 'image' && (
+                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
+                            <img src={msg.mediaUrl} className="w-full h-24 object-cover" />
+                          </a>
+                        )}
+                        {msg.type === 'video' && (
+                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="block relative w-full h-24 bg-black">
+                            <video src={msg.mediaUrl} className="w-full h-full object-cover opacity-60" />
+                            <div className="absolute inset-0 flex items-center justify-center text-white"><Film size={24} /></div>
+                          </a>
+                        )}
+                        {msg.type === 'document' && (
+                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center h-24 p-2 text-center hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                            <FileText size={24} className="text-blue-500 mb-1" />
+                            <span className="text-[10px] truncate w-full">{msg.text}</span>
+                          </a>
+                        )}
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] p-1 opacity-0 group-hover:opacity-100 transition-opacity truncate">
+                          {new Date(msg.createdAt?.seconds * 1000).toLocaleDateString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
-                {selectedGuest.createdBy && (
-                  <p className="text-[10px] text-slate-400">Criado por: {selectedGuest.createdBy}</p>
-                )}
               </div>
-            </div>
+            )}
           </>
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-slate-300 dark:text-slate-600">

@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Contacts from './pages/Contacts';
 import Tasks from './pages/Tasks';
 import Reports from './pages/Reports';
+import { hasReportsAccess } from './utils/authUtils';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -47,6 +48,14 @@ function App() {
     if (guestId) setTargetGuestId(guestId);
     setCurrentPage('inbox');
   };
+
+  // Redirecionar se tentar acessar reports sem permissão
+  useEffect(() => {
+    if (currentPage === 'reports' && user && !hasReportsAccess(user)) {
+      setCurrentPage('dashboard');
+      alert("Acesso restrito a administradores.");
+    }
+  }, [currentPage, user]);
 
   if (loading) {
     return (

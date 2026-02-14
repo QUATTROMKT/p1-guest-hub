@@ -105,6 +105,16 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
         }
     };
 
+    const getTagStyle = (tag: string) => {
+        if (tag.toLowerCase() === 'funcionário' || tag.toLowerCase() === 'funcionario') {
+            return 'bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700';
+        }
+        if (tag.toLowerCase() === 'vip') {
+            return 'bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700';
+        }
+        return 'bg-slate-100 text-slate-500 border border-slate-200 dark:bg-slate-700 dark:text-slate-400 dark:border-slate-600';
+    };
+
     return (
         <div className="flex h-full w-full bg-slate-50 dark:bg-slate-900 p-8 overflow-y-auto transition-colors duration-200">
             <div className="max-w-6xl mx-auto w-full">
@@ -205,7 +215,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                         <td className="p-4 hidden md:table-cell">
                                             <div className="flex flex-wrap gap-1">
                                                 {guest.tags?.slice(0, 3).map(tag => (
-                                                    <span key={tag} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold border border-slate-200 uppercase">{tag}</span>
+                                                    <span key={tag} className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${getTagStyle(tag)}`}>{tag}</span>
                                                 ))}
                                             </div>
                                         </td>
