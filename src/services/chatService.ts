@@ -16,6 +16,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = initializeFirestore(app, {}, "p1hotel");
 const storage = getStorage(app);
+console.log("Firebase App Initialized. Storage Bucket:", firebaseConfig.storageBucket);
 
 const ZAPI_INSTANCE = import.meta.env.VITE_ZAPI_INSTANCE;
 const ZAPI_TOKEN = import.meta.env.VITE_ZAPI_TOKEN;

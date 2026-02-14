@@ -113,9 +113,9 @@ export default function Inbox({ initialGuestId }: InboxProps) {
     try {
       const url = await uploadFile(file);
       await sendMessage(selectedGuest.id, selectedGuest.phone, file.name, type, url, agentName);
-    } catch (error) {
-      alert("Erro ao enviar arquivo.");
-      console.error(error);
+    } catch (error: any) {
+      console.error("Erro detalhado de upload:", error);
+      alert(`Erro ao enviar arquivo: ${error.message || 'Erro desconhecido'} (Code: ${error.code || 'N/A'})`);
     }
   };
 
@@ -257,7 +257,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-start">
                     <h3 className={`font-bold truncate flex items-center gap-1 ${selectedGuest?.id === guest.id ? 'text-emerald-900 dark:text-emerald-400' :
-                        (guest.tags?.includes('Funcionário') || guest.status === 'internal') ? 'text-purple-700 dark:text-purple-400' : 'text-slate-800 dark:text-slate-200'
+                      (guest.tags?.includes('Funcionário') || guest.status === 'internal') ? 'text-purple-700 dark:text-purple-400' : 'text-slate-800 dark:text-slate-200'
                       }`}>
                       {guest.name}
                       {(guest.tags?.includes('Funcionário') || guest.status === 'internal') && <Shield size={12} className="text-purple-600 fill-purple-100" />}
