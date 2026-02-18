@@ -9,43 +9,17 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
   try {
     const body = req.body;
 
-    // --- LOG TEMPORÁRIO DE DIAGNÓSTICO ---
-    // Loga TODA requisição para debug
-    console.log("=== WEBHOOK RECEBIDO ===", JSON.stringify({
-      fromMe: body.fromMe,
-      fromApi: body.fromApi,
-      isStatusReply: body.isStatusReply,
-      phone: body.phone,
-      chatId: body.chatId,
-      senderName: body.senderName,
-      chatName: body.chatName,
-      isGroup: body.isGroup,
-      type: body.type,
-      mompiado: body.mompiado,
-      source: body.source,
-      self: body.self,
-      isEdit: body.isEdit,
-      instanceId: body.instanceId,
-      messageId: body.messageId,
-      // Campos de texto/mídia
-      hasText: !!body.text,
-      hasImage: !!body.image,
-      hasAudio: !!body.audio,
-      hasVideo: !!body.video,
-      hasDocument: !!body.document,
-      hasSticker: !!body.sticker,
-      // Payload completo para mensagens fromMe
-      fullPayload: body.fromMe ? body : undefined
-    }));
-
-    // --- ÚNICA REGRA DE BLOQUEIO ---
-    // Se a mensagem veio do sistema/hotel, ignora para não duplicar.
-    // TUDO O RESTO ENTRA.
-    if (body.fromMe) {
-      console.log("=== FROMME COMPLETO ===", JSON.stringify(body));
-      res.status(200).send("Ignored (From Me)");
+    // --- REGRA DE BLOQUEIO INTELIGENTE ---
+    // Se a mensagem foi enviada pela API (pelo sistema), ignora para não duplicar.
+    // Mensagens enviadas pelo celular/WhatsApp Web (fromMe=true, fromApi=false) SÃO salvas.
+    if (body.fromMe && body.fromApi) {
+      res.status(200).send("Ignored (From API/System)");
       return;
     }
+
+    // Determina o remetente: fromMe = enviada pelo celular/WhatsApp Web do hotel
+    const isFromHotel = body.fromMe === true && body.fromApi === false;
+    const senderType = isFromHotel ? "agent" : "guest";
 
     // Verificamos se é mídia primeiro para já capturar a URL
     let mediaUrl = "";
@@ -91,28 +65,28 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     }
 
     // --- IDENTIFICAR O HÓSPEDE (OU GRUPO) ---
-    // Pega o telefone de qualquer campo possível
     const isGroup = body.isGroup === true;
     let targetPhone = "";
     let participantPhone = "";
-    let guestName = body.senderName || body.chatName || "Hóspede (WhatsApp)";
+
+    // Para mensagens fromMe, o chatName tem o nome do destinatário (hóspede)
+    // Para mensagens de hóspedes, senderName tem o nome de quem enviou
+    let guestName = isFromHotel
+      ? (body.chatName || "Hóspede (WhatsApp)")
+      : (body.senderName || body.chatName || "Hóspede (WhatsApp)");
 
     if (isGroup) {
-      // Se for grupo, o ID do grupo vem no 'phone' ou 'chatId'
-      // E quem mandou vem em 'participantPhone'
-      targetPhone = (body.phone || body.chatId || "").split('@')[0]; // ID do grupo
+      targetPhone = (body.phone || body.chatId || "").split('@')[0];
       participantPhone = body.participantPhone ? body.participantPhone.split('@')[0].replace(/\D/g, '') : "Desconhecido";
 
-      // Ajusta nome para indicar que é grupo, se possível
       if (!guestName.includes("Grupo")) {
-        // Tenta pegar nome do grupo em 'groupName' ou mantem o que veio
-        // Geralmente body.senderName é quem mandou, e não o nome do grupo em alguns webhooks
-        // Mas vamos assumir que o sistema vai tratar isso depois ou o usuário renomeia
-        // Vamos adicionar um sufixo ou prefixo visual no frontend, mas no backend salvamos o flag
+        // Nome do grupo pode vir em chatName
       }
     } else {
+      // Para mensagens fromMe, o phone pode vir como "155654571808281id"
+      // Precisamos limpar corretamente
       const rawPhone = body.phone || body.sender || body.chatId || "";
-      targetPhone = rawPhone.split('@')[0].replace(/\D/g, '');
+      targetPhone = rawPhone.split('@')[0].replace(/\D/g, '').replace(/id$/i, '');
     }
 
     // Se não tiver telefone, aí sim é erro
@@ -121,7 +95,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       return;
     }
 
-    // --- SALVAR NO BANCO (SEM FRESCURA) ---
+    // --- SALVAR NO BANCO ---
     const guestsRef = db.collection("guests");
     const snapshot = await guestsRef.where("phone", "==", targetPhone).limit(1).get();
     let guestId = "";
@@ -132,11 +106,11 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         name: guestName,
         phone: targetPhone,
         avatar: body.photo || `https://ui-avatars.com/api/?name=${guestName}&background=random`,
-        status: "lead", // Cria como Lead
+        status: "lead",
         tags: ["WhatsApp"],
         lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
-        unreadCount: 1,
+        unreadCount: isFromHotel ? 0 : 1, // Não marca como não lida se foi o hotel que enviou
         isGroup: isGroup,
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
       });
@@ -144,23 +118,28 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     } else {
       // Atualiza existente
       guestId = snapshot.docs[0].id;
-      await guestsRef.doc(guestId).update({
+      const updateData: any = {
         lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
-        unreadCount: admin.firestore.FieldValue.increment(1)
-      });
+      };
+      // Só incrementa unread se for mensagem de hóspede (não do hotel)
+      if (!isFromHotel) {
+        updateData.unreadCount = admin.firestore.FieldValue.increment(1);
+      }
+      await guestsRef.doc(guestId).update(updateData);
     }
 
     // Salva a mensagem
     await db.collection("guests").doc(guestId).collection("messages").add({
       text: text,
-      sender: "guest",
+      sender: senderType,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       type: messageType,
       mediaUrl: mediaUrl,
       status: "read",
       isGroup: isGroup,
-      participantPhone: participantPhone || null
+      participantPhone: participantPhone || null,
+      agentName: isFromHotel ? "Hotel (WhatsApp)" : undefined
     });
 
     res.status(200).send("OK");
