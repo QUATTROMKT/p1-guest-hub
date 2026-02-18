@@ -9,10 +9,40 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
   try {
     const body = req.body;
 
+    // --- LOG TEMPORÁRIO DE DIAGNÓSTICO ---
+    // Loga TODA requisição para debug
+    console.log("=== WEBHOOK RECEBIDO ===", JSON.stringify({
+      fromMe: body.fromMe,
+      fromApi: body.fromApi,
+      isStatusReply: body.isStatusReply,
+      phone: body.phone,
+      chatId: body.chatId,
+      senderName: body.senderName,
+      chatName: body.chatName,
+      isGroup: body.isGroup,
+      type: body.type,
+      mompiado: body.mompiado,
+      source: body.source,
+      self: body.self,
+      isEdit: body.isEdit,
+      instanceId: body.instanceId,
+      messageId: body.messageId,
+      // Campos de texto/mídia
+      hasText: !!body.text,
+      hasImage: !!body.image,
+      hasAudio: !!body.audio,
+      hasVideo: !!body.video,
+      hasDocument: !!body.document,
+      hasSticker: !!body.sticker,
+      // Payload completo para mensagens fromMe
+      fullPayload: body.fromMe ? body : undefined
+    }));
+
     // --- ÚNICA REGRA DE BLOQUEIO ---
     // Se a mensagem veio do sistema/hotel, ignora para não duplicar.
     // TUDO O RESTO ENTRA.
     if (body.fromMe) {
+      console.log("=== FROMME COMPLETO ===", JSON.stringify(body));
       res.status(200).send("Ignored (From Me)");
       return;
     }

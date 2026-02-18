@@ -45,8 +45,16 @@ function App() {
 
   // Função Inteligente: Vai pro Chat JÁ selecionando o hóspede
   const handleGoToChat = (guestId?: string) => {
-    if (guestId) setTargetGuestId(guestId);
+    setTargetGuestId(guestId || null);
     setCurrentPage('inbox');
+  };
+
+  // Limpa o targetGuestId ao navegar para outra página
+  const handleNavigate = (page: string) => {
+    if (page !== 'inbox') {
+      setTargetGuestId(null);
+    }
+    setCurrentPage(page);
   };
 
   // Redirecionar se tentar acessar reports sem permissão
@@ -71,7 +79,7 @@ function App() {
 
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 overflow-hidden font-sans transition-colors duration-200">
-      <Sidebar activePage={currentPage} onNavigate={setCurrentPage} theme={theme} onToggleTheme={toggleTheme} />
+      <Sidebar activePage={currentPage} onNavigate={handleNavigate} theme={theme} onToggleTheme={toggleTheme} />
 
       <main className="flex-1 h-full relative">
         {currentPage === 'dashboard' && (
