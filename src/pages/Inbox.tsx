@@ -47,13 +47,24 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  // Ref para evitar stale closure no callback do onSnapshot
+  const selectedGuestRef = useRef<Guest | null>(null);
+  useEffect(() => { selectedGuestRef.current = selectedGuest; }, [selectedGuest]);
+  const initialGuestHandled = useRef(false);
+
   useEffect(() => {
+    // Reset quando o initialGuestId muda
+    initialGuestHandled.current = false;
     const unsubscribe = subscribeToGuests((data: any[]) => {
       const loadedGuests = data as Guest[];
       setGuests(loadedGuests);
-      if (initialGuestId && !selectedGuest) {
+      // Só auto-seleciona uma vez, quando initialGuestId muda
+      if (initialGuestId && !initialGuestHandled.current && !selectedGuestRef.current) {
         const target = loadedGuests.find(g => g.id === initialGuestId);
-        if (target) handleSelectGuest(target); // Usa a nova função de selecionar
+        if (target) {
+          handleSelectGuest(target);
+          initialGuestHandled.current = true;
+        }
       }
     });
     return () => unsubscribe();
@@ -343,7 +354,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
                         </div>
                       </div>
                     )}
-                    <p dangerouslySetInnerHTML={{ __html: (msg.text || '').replace(/\n/g, '<br/>') }}></p>
+                    <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.text || ''}</p>
                     <div className="flex justify-between items-end mt-1 gap-2">
                       {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantPhone?.slice(-4) || 'Membro'}</span>}
                       {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
@@ -556,7 +567,7 @@ export default function Inbox({ initialGuestId }: InboxProps) {
                           </a>
                         )}
                         <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] p-1 opacity-0 group-hover:opacity-100 transition-opacity truncate">
-                          {new Date(msg.createdAt?.seconds * 1000).toLocaleDateString()}
+                          {msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleDateString() : '...'}
                         </div>
                       </div>
                     ))}
