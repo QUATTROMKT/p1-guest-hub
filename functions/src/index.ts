@@ -78,30 +78,58 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     if (isGroup) {
       targetPhone = (body.phone || body.chatId || "").split('@')[0];
       participantPhone = body.participantPhone ? body.participantPhone.split('@')[0].replace(/\D/g, '') : "Desconhecido";
-
-      if (!guestName.includes("Grupo")) {
-        // Nome do grupo pode vir em chatName
-      }
     } else {
-      // Para mensagens fromMe, o phone pode vir como "155654571808281id"
-      // Precisamos limpar corretamente
       const rawPhone = body.phone || body.sender || body.chatId || "";
       targetPhone = rawPhone.split('@')[0].replace(/\D/g, '').replace(/id$/i, '');
     }
 
+    console.log("[Webhook] Raw body.phone:", body.phone, "| Parsed targetPhone:", targetPhone, "| fromMe:", body.fromMe, "| fromApi:", body.fromApi, "| guestName:", guestName);
+
     // Se não tiver telefone, aí sim é erro
     if (targetPhone.length < 5) {
+      console.log("[Webhook] Ignored - phone too short:", targetPhone);
       res.status(200).send("Ignored (No Phone)");
       return;
     }
 
-    // --- SALVAR NO BANCO ---
+    // --- SALVAR NO BANCO (com busca flexível de telefone) ---
     const guestsRef = db.collection("guests");
-    const snapshot = await guestsRef.where("phone", "==", targetPhone).limit(1).get();
-    let guestId = "";
 
-    if (snapshot.empty) {
+    // Gera variantes do telefone para busca flexível
+    const phoneVariants: string[] = [targetPhone];
+
+    // Se começa com 55 (Brasil), tenta sem o 55
+    if (targetPhone.startsWith("55") && targetPhone.length > 10) {
+      phoneVariants.push(targetPhone.substring(2));
+    }
+    // Se NÃO começa com 55, tenta com 55
+    if (!targetPhone.startsWith("55")) {
+      phoneVariants.push("55" + targetPhone);
+    }
+    // Últimos 10 e 11 dígitos (DDD + número)
+    if (targetPhone.length > 11) {
+      phoneVariants.push(targetPhone.slice(-11));
+      phoneVariants.push(targetPhone.slice(-10));
+    }
+
+    console.log("[Webhook] Phone variants to search:", phoneVariants);
+
+    let guestId = "";
+    let foundSnapshot: FirebaseFirestore.QuerySnapshot | null = null;
+
+    // Tenta encontrar o guest com cada variante
+    for (const variant of phoneVariants) {
+      const snap = await guestsRef.where("phone", "==", variant).limit(1).get();
+      if (!snap.empty) {
+        foundSnapshot = snap;
+        console.log("[Webhook] Found guest with phone variant:", variant, "| Guest ID:", snap.docs[0].id, "| Guest Name:", snap.docs[0].data().name);
+        break;
+      }
+    }
+
+    if (!foundSnapshot || foundSnapshot.empty) {
       // Cria novo
+      console.log("[Webhook] No guest found for any variant. Creating new guest:", guestName, targetPhone);
       const newGuest = await guestsRef.add({
         name: guestName,
         phone: targetPhone,
@@ -110,19 +138,18 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         tags: ["WhatsApp"],
         lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
-        unreadCount: isFromHotel ? 0 : 1, // Não marca como não lida se foi o hotel que enviou
+        unreadCount: isFromHotel ? 0 : 1,
         isGroup: isGroup,
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
       });
       guestId = newGuest.id;
     } else {
       // Atualiza existente
-      guestId = snapshot.docs[0].id;
+      guestId = foundSnapshot.docs[0].id;
       const updateData: any = {
         lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
       };
-      // Só incrementa unread se for mensagem de hóspede (não do hotel)
       if (!isFromHotel) {
         updateData.unreadCount = admin.firestore.FieldValue.increment(1);
       }
