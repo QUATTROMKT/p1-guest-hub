@@ -116,8 +116,13 @@ export const sendMessage = async (
 };
 
 export const createGuest = async (data: any) => {
-  const docRef = await addDoc(collection(db, "guests"), {
+  // Normaliza o telefone para apenas dígitos
+  const normalizedData = {
     ...data,
+    phone: data.phone ? data.phone.replace(/\D/g, '') : '',
+  };
+  const docRef = await addDoc(collection(db, "guests"), {
+    ...normalizedData,
     createdAt: serverTimestamp(),
     lastMessageTime: serverTimestamp(),
     unreadCount: 0,

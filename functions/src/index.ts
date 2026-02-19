@@ -103,16 +103,40 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     // --- SALVAR NO BANCO (com busca flexível de telefone) ---
     const guestsRef = db.collection("guests");
 
-    // Helper: verifica se dois telefones são o mesmo (comparando sufixos)
+    // Helper: verifica se dois telefones são o mesmo (com normalização brasileira)
     const phonesMatch = (stored: string, incoming: string): boolean => {
       const a = normalizePhone(stored);
       const b = normalizePhone(incoming);
+      if (!a || !b || a.length < 8 || b.length < 8) return false;
       if (a === b) return true;
-      // Compara últimos 10-11 dígitos (DDD + número sem código do país)
-      if (a.length >= 10 && b.length >= 10) {
-        if (a.endsWith(b.slice(-10)) || b.endsWith(a.slice(-10))) return true;
-        if (a.endsWith(b.slice(-11)) || b.endsWith(a.slice(-11))) return true;
-      }
+
+      // Remove código do país (55) para comparação local
+      const stripCountry = (p: string) => p.startsWith("55") && p.length > 10 ? p.substring(2) : p;
+      const aLocal = stripCountry(a);
+      const bLocal = stripCountry(b);
+      if (aLocal === bLocal) return true;
+
+      // 9º dígito brasileiro: celulares têm 9 extra antes do número
+      // DDD(2) + 9 + 8 dígitos = 11, ou DDD(2) + 8 dígitos = 10
+      const strip9thDigit = (p: string) => {
+        // Se tem 11 dígitos locais e o 3º dígito é 9, remove-o
+        if (p.length === 11 && p[2] === '9') return p.slice(0, 2) + p.slice(3);
+        return p;
+      };
+      const add9thDigit = (p: string) => {
+        // Se tem 10 dígitos locais, adiciona 9 como 3º dígito
+        if (p.length === 10) return p.slice(0, 2) + '9' + p.slice(2);
+        return p;
+      };
+
+      // Tenta com/sem 9º dígito
+      if (strip9thDigit(aLocal) === strip9thDigit(bLocal)) return true;
+      if (add9thDigit(aLocal) === bLocal || aLocal === add9thDigit(bLocal)) return true;
+      if (strip9thDigit(aLocal) === bLocal || aLocal === strip9thDigit(bLocal)) return true;
+
+      // Último recurso: compara últimos 8 dígitos (número do assinante)
+      if (a.slice(-8) === b.slice(-8)) return true;
+
       return false;
     };
 
