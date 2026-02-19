@@ -26,14 +26,20 @@ export const subscribeToGuests = (cb: (data: any[]) => void) => {
   return onSnapshot(q, (snap) => {
     const guests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     cb(guests);
+  }, (error) => {
+    console.error('[chatService] subscribeToGuests error:', error);
   });
 };
 
 export const subscribeToMessages = (guestId: string, cb: (data: any[]) => void) => {
+  console.log('[chatService] subscribeToMessages called for guestId:', guestId);
   const q = query(collection(db, "guests", guestId, "messages"), orderBy("createdAt", "asc"));
   return onSnapshot(q, (snap) => {
     const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    console.log('[chatService] Messages snapshot:', messages.length, 'messages');
     cb(messages);
+  }, (error) => {
+    console.error('[chatService] subscribeToMessages error for guest', guestId, ':', error);
   });
 };
 
