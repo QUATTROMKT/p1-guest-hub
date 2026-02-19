@@ -98,12 +98,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
 
   useEffect(() => {
     if (selectedGuestId) {
-      console.log('[Inbox] Subscribing to messages for guestId:', selectedGuestId);
       const unsubscribe = subscribeToMessages(selectedGuestId, (data: any[]) => {
-        console.log('[Inbox] Messages received:', data.length, 'messages for guest:', selectedGuestId);
-        if (data.length > 0) {
-          console.log('[Inbox] Last message:', data[data.length - 1]);
-        }
         setMessages(data as Message[]);
       });
       return () => unsubscribe();
