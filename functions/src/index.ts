@@ -69,18 +69,26 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     let targetPhone = "";
     let participantPhone = "";
 
+    // Helper: normaliza telefone para apenas dígitos
+    const normalizePhone = (p: string): string => p.replace(/\D/g, '').replace(/id$/i, '');
+
     // Para mensagens fromMe, o chatName tem o nome do destinatário (hóspede)
     // Para mensagens de hóspedes, senderName tem o nome de quem enviou
     let guestName = isFromHotel
       ? (body.chatName || "Hóspede (WhatsApp)")
       : (body.senderName || body.chatName || "Hóspede (WhatsApp)");
 
+    // Sanitiza nome: se parecer um chatId cru (ex: "274049146044619@lid"), usa fallback
+    if (guestName.includes("@") || /^\d{10,}$/.test(guestName)) {
+      guestName = "Hóspede (WhatsApp)";
+    }
+
     if (isGroup) {
-      targetPhone = (body.phone || body.chatId || "").split('@')[0];
-      participantPhone = body.participantPhone ? body.participantPhone.split('@')[0].replace(/\D/g, '') : "Desconhecido";
+      targetPhone = normalizePhone((body.phone || body.chatId || "").split('@')[0]);
+      participantPhone = body.participantPhone ? normalizePhone(body.participantPhone.split('@')[0]) : "Desconhecido";
     } else {
       const rawPhone = body.phone || body.sender || body.chatId || "";
-      targetPhone = rawPhone.split('@')[0].replace(/\D/g, '').replace(/id$/i, '');
+      targetPhone = normalizePhone(rawPhone.split('@')[0]);
     }
 
     console.log("[Webhook] Raw body.phone:", body.phone, "| Parsed targetPhone:", targetPhone, "| fromMe:", body.fromMe, "| fromApi:", body.fromApi, "| guestName:", guestName);
@@ -95,41 +103,64 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     // --- SALVAR NO BANCO (com busca flexível de telefone) ---
     const guestsRef = db.collection("guests");
 
-    // Gera variantes do telefone para busca flexível
-    const phoneVariants: string[] = [targetPhone];
+    // Helper: verifica se dois telefones são o mesmo (comparando sufixos)
+    const phonesMatch = (stored: string, incoming: string): boolean => {
+      const a = normalizePhone(stored);
+      const b = normalizePhone(incoming);
+      if (a === b) return true;
+      // Compara últimos 10-11 dígitos (DDD + número sem código do país)
+      if (a.length >= 10 && b.length >= 10) {
+        if (a.endsWith(b.slice(-10)) || b.endsWith(a.slice(-10))) return true;
+        if (a.endsWith(b.slice(-11)) || b.endsWith(a.slice(-11))) return true;
+      }
+      return false;
+    };
 
-    // Se começa com 55 (Brasil), tenta sem o 55
+    let guestId = "";
+    let matchedDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+
+    // PASSO 1: Busca rápida por variantes de dígitos puros
+    const phoneVariants: string[] = [targetPhone];
     if (targetPhone.startsWith("55") && targetPhone.length > 10) {
       phoneVariants.push(targetPhone.substring(2));
     }
-    // Se NÃO começa com 55, tenta com 55
     if (!targetPhone.startsWith("55")) {
       phoneVariants.push("55" + targetPhone);
     }
-    // Últimos 10 e 11 dígitos (DDD + número)
     if (targetPhone.length > 11) {
       phoneVariants.push(targetPhone.slice(-11));
       phoneVariants.push(targetPhone.slice(-10));
     }
 
-    console.log("[Webhook] Phone variants to search:", phoneVariants);
-
-    let guestId = "";
-    let foundSnapshot: FirebaseFirestore.QuerySnapshot | null = null;
-
-    // Tenta encontrar o guest com cada variante
     for (const variant of phoneVariants) {
       const snap = await guestsRef.where("phone", "==", variant).limit(1).get();
       if (!snap.empty) {
-        foundSnapshot = snap;
-        console.log("[Webhook] Found guest with phone variant:", variant, "| Guest ID:", snap.docs[0].id, "| Guest Name:", snap.docs[0].data().name);
+        matchedDoc = snap.docs[0];
+        console.log("[Webhook] Found guest (exact variant):", variant, "| ID:", matchedDoc.id);
         break;
       }
     }
 
-    if (!foundSnapshot || foundSnapshot.empty) {
-      // Cria novo
-      console.log("[Webhook] No guest found for any variant. Creating new guest:", guestName, targetPhone);
+    // PASSO 2: Fallback — busca TODOS os guests e compara com normalização
+    if (!matchedDoc) {
+      console.log("[Webhook] No exact match. Trying in-memory normalized search...");
+      const allGuests = await guestsRef.get();
+      for (const doc of allGuests.docs) {
+        const storedPhone = doc.data().phone || "";
+        if (phonesMatch(storedPhone, targetPhone)) {
+          matchedDoc = doc;
+          console.log("[Webhook] Found guest (normalized):", storedPhone, "→", targetPhone, "| ID:", doc.id, "| Name:", doc.data().name);
+          // Normaliza o telefone no banco para evitar problemas futuros
+          await guestsRef.doc(doc.id).update({ phone: targetPhone });
+          console.log("[Webhook] Normalized stored phone from", storedPhone, "to", targetPhone);
+          break;
+        }
+      }
+    }
+
+    if (!matchedDoc) {
+      // Cria novo guest
+      console.log("[Webhook] No guest found. Creating:", guestName, targetPhone);
       const newGuest = await guestsRef.add({
         name: guestName,
         phone: targetPhone,
@@ -145,7 +176,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       guestId = newGuest.id;
     } else {
       // Atualiza existente
-      guestId = foundSnapshot.docs[0].id;
+      guestId = matchedDoc.id;
       const updateData: any = {
         lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
