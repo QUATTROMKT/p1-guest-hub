@@ -25,9 +25,9 @@ interface Guest {
   createdBy?: string; lastUpdatedBy?: string;
 }
 
-interface InboxProps { initialGuestId?: string | null; }
+interface InboxProps { initialGuestId?: string | null; onInitialGuestHandled?: () => void; }
 
-export default function Inbox({ initialGuestId }: InboxProps) {
+export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxProps) {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -47,29 +47,41 @@ export default function Inbox({ initialGuestId }: InboxProps) {
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Ref para evitar stale closure no callback do onSnapshot
+  // Ref para guardar referência do guest selecionado
   const selectedGuestRef = useRef<Guest | null>(null);
   useEffect(() => { selectedGuestRef.current = selectedGuest; }, [selectedGuest]);
-  const initialGuestHandled = useRef(false);
+  const initialGuestHandledRef = useRef(false);
 
+  // Subscrição aos guests — INDEPENDENTE do initialGuestId
   useEffect(() => {
-    // Reset quando o initialGuestId muda
-    initialGuestHandled.current = false;
     const unsubscribe = subscribeToGuests((data: any[]) => {
       const loadedGuests = data as Guest[];
       setGuests(loadedGuests);
-      // Só auto-seleciona uma vez, quando initialGuestId muda
-      if (initialGuestId && !initialGuestHandled.current && !selectedGuestRef.current) {
-        const target = loadedGuests.find(g => g.id === initialGuestId);
-        if (target) {
-          handleSelectGuest(target);
-          initialGuestHandled.current = true;
-        }
-      }
     });
     return () => unsubscribe();
-  }, [initialGuestId]);
+  }, []);
 
+  // Auto-seleciona o hóspede inicial UMA VEZ e limpa o valor no App
+  useEffect(() => {
+    if (initialGuestId && guests.length > 0 && !initialGuestHandledRef.current) {
+      const target = guests.find(g => g.id === initialGuestId);
+      if (target) {
+        handleSelectGuest(target);
+      }
+      initialGuestHandledRef.current = true;
+      // Limpa o initialGuestId no App para nunca mais re-selecionar
+      if (onInitialGuestHandled) {
+        onInitialGuestHandled();
+      }
+    }
+    // Reset flag quando initialGuestId muda (novo guest selecionado via Contatos)
+    if (!initialGuestId) {
+      initialGuestHandledRef.current = false;
+    }
+  }, [initialGuestId, guests]);
+
+  // Subscribes to messages do hóspede selecionado (por ID, não referência)
+  const selectedGuestId = selectedGuest?.id || null;
   useEffect(() => {
     if (selectedGuest) {
       setLocalNote(selectedGuest.notes || '');
@@ -81,12 +93,19 @@ export default function Inbox({ initialGuestId }: InboxProps) {
         status: selectedGuest.status || 'lead',
         name: selectedGuest.name || ''
       });
-      const unsubscribe = subscribeToMessages(selectedGuest.id, (data: any[]) => {
+    }
+  }, [selectedGuest]);
+
+  useEffect(() => {
+    if (selectedGuestId) {
+      const unsubscribe = subscribeToMessages(selectedGuestId, (data: any[]) => {
         setMessages(data as Message[]);
       });
       return () => unsubscribe();
+    } else {
+      setMessages([]);
     }
-  }, [selectedGuest]);
+  }, [selectedGuestId]);
 
   // --- NOVA FUNÇÃO DE SELECIONAR HÓSPEDE ---
   const handleSelectGuest = async (guest: Guest) => {

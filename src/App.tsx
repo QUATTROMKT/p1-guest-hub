@@ -49,6 +49,11 @@ function App() {
     setCurrentPage('inbox');
   };
 
+  // Limpa o targetGuestId depois que o Inbox já consumiu o valor
+  const clearTargetGuest = () => {
+    setTargetGuestId(null);
+  };
+
   // Limpa o targetGuestId ao navegar para outra página
   const handleNavigate = (page: string) => {
     if (page !== 'inbox') {
@@ -91,7 +96,7 @@ function App() {
         )}
 
         {currentPage === 'inbox' && (
-          <Inbox initialGuestId={targetGuestId} />
+          <Inbox initialGuestId={targetGuestId} onInitialGuestHandled={clearTargetGuest} />
         )}
 
         {currentPage === 'contacts' && (

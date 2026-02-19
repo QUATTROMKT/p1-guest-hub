@@ -102,6 +102,12 @@ export const sendMessage = async (
         'Client-Token': ZAPI_CLIENT_TOKEN
       },
       body: JSON.stringify(body)
+    }).then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      console.log('[Z-API] Status:', response.status, 'Response:', data);
+      if (!response.ok) {
+        console.error('[Z-API] Erro na resposta:', response.status, data);
+      }
     });
   } catch (error) {
     console.error("Erro Z-API:", error);
