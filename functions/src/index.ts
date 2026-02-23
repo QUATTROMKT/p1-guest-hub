@@ -4,10 +4,22 @@ import { getFirestore } from "firebase-admin/firestore";
 
 admin.initializeApp();
 const db = getFirestore("p1hotel");
+db.settings({ ignoreUndefinedProperties: true });
 
 export const zapiWebhook = functions.https.onRequest(async (req, res) => {
   try {
     const body = req.body;
+    console.log("[Webhook] Full Body:", JSON.stringify(body, null, 2));
+
+
+    // --- REGRA DE BLOQUEIO DE STATUS E NOTIFICAÇÕES ---
+    // Se for uma notificação de status (RECEIVED, READ, etc), ignora.
+    if (body.status || body.connectedPhone) {
+      if (!body.text && !body.image && !body.audio && !body.video && !body.document) {
+        res.status(200).send("Ignored (Status Update)");
+        return;
+      }
+    }
 
     // --- REGRA DE BLOQUEIO INTELIGENTE ---
     // Se a mensagem foi enviada pela API (pelo sistema), ignora para não duplicar.
@@ -18,8 +30,11 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     }
 
     // Determina o remetente: fromMe = enviada pelo celular/WhatsApp Web do hotel
-    const isFromHotel = body.fromMe === true && body.fromApi === false;
+    const isFromHotel = body.fromMe === true; // Removemos check de fromApi aqui para aceitar do celular
     const senderType = isFromHotel ? "agent" : "guest";
+
+    // ... (rest of media handling code) ...
+    // [Note: I'll keep the existing media handling block as is, just updating the context around it]
 
     // Verificamos se é mídia primeiro para já capturar a URL
     let mediaUrl = "";
@@ -67,10 +82,14 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     // --- IDENTIFICAR O HÓSPEDE (OU GRUPO) ---
     const isGroup = body.isGroup === true;
     let targetPhone = "";
-    let participantPhone = "";
+    let participantPhone = (body.participantPhone || "").replace(/\D/g, '').replace(/id$/i, '') || "Desconhecido";
 
-    // Helper: normaliza telefone para apenas dígitos
+    // normaliza telefone para apenas dígitos
     const normalizePhone = (p: string): string => p.replace(/\D/g, '').replace(/id$/i, '');
+
+    // Extrai LID se disponível
+    const rawLid = body.chatLid || body.participantLid || (body.phone && body.phone.includes("@lid") ? body.phone : "") || "";
+    const lid = normalizePhone(rawLid);
 
     // Para mensagens fromMe, o chatName tem o nome do destinatário (hóspede)
     // Para mensagens de hóspedes, senderName tem o nome de quem enviou
@@ -85,13 +104,12 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
 
     if (isGroup) {
       targetPhone = normalizePhone((body.phone || body.chatId || "").split('@')[0]);
-      participantPhone = body.participantPhone ? normalizePhone(body.participantPhone.split('@')[0]) : "Desconhecido";
     } else {
       const rawPhone = body.phone || body.sender || body.chatId || "";
       targetPhone = normalizePhone(rawPhone.split('@')[0]);
     }
 
-    console.log("[Webhook] Raw body.phone:", body.phone, "| Parsed targetPhone:", targetPhone, "| fromMe:", body.fromMe, "| fromApi:", body.fromApi, "| guestName:", guestName);
+    console.log("[Webhook] Raw body.phone:", body.phone, "| Parsed targetPhone:", targetPhone, "| LID:", lid, "| fromMe:", body.fromMe);
 
     // Se não tiver telefone, aí sim é erro
     if (targetPhone.length < 5) {
@@ -100,7 +118,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       return;
     }
 
-    // --- SALVAR NO BANCO (com busca flexível de telefone) ---
+    // --- SALVAR NO BANCO (com busca flexível de telefone e LID) ---
     const guestsRef = db.collection("guests");
 
     // Helper: verifica se dois telefones são o mesmo (com normalização brasileira)
@@ -110,31 +128,17 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       if (!a || !b || a.length < 8 || b.length < 8) return false;
       if (a === b) return true;
 
-      // Remove código do país (55) para comparação local
       const stripCountry = (p: string) => p.startsWith("55") && p.length > 10 ? p.substring(2) : p;
       const aLocal = stripCountry(a);
       const bLocal = stripCountry(b);
       if (aLocal === bLocal) return true;
 
-      // 9º dígito brasileiro: celulares têm 9 extra antes do número
-      // DDD(2) + 9 + 8 dígitos = 11, ou DDD(2) + 8 dígitos = 10
-      const strip9thDigit = (p: string) => {
-        // Se tem 11 dígitos locais e o 3º dígito é 9, remove-o
-        if (p.length === 11 && p[2] === '9') return p.slice(0, 2) + p.slice(3);
-        return p;
-      };
-      const add9thDigit = (p: string) => {
-        // Se tem 10 dígitos locais, adiciona 9 como 3º dígito
-        if (p.length === 10) return p.slice(0, 2) + '9' + p.slice(2);
-        return p;
-      };
+      const strip9thDigit = (p: string) => (p.length === 11 && p[2] === '9') ? p.slice(0, 2) + p.slice(3) : p;
+      const add9thDigit = (p: string) => (p.length === 10) ? p.slice(0, 2) + '9' + p.slice(2) : p;
 
-      // Tenta com/sem 9º dígito
       if (strip9thDigit(aLocal) === strip9thDigit(bLocal)) return true;
       if (add9thDigit(aLocal) === bLocal || aLocal === add9thDigit(bLocal)) return true;
       if (strip9thDigit(aLocal) === bLocal || aLocal === strip9thDigit(bLocal)) return true;
-
-      // Último recurso: compara últimos 8 dígitos (número do assinante)
       if (a.slice(-8) === b.slice(-8)) return true;
 
       return false;
@@ -143,76 +147,68 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     let guestId = "";
     let matchedDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
-    // PASSO 1: Busca rápida por variantes de dígitos puros
     const phoneVariants: string[] = [targetPhone];
-    if (targetPhone.startsWith("55") && targetPhone.length > 10) {
-      phoneVariants.push(targetPhone.substring(2));
-    }
-    if (!targetPhone.startsWith("55")) {
-      phoneVariants.push("55" + targetPhone);
-    }
-    if (targetPhone.length > 11) {
-      phoneVariants.push(targetPhone.slice(-11));
-      phoneVariants.push(targetPhone.slice(-10));
-    }
+    if (targetPhone.startsWith("55") && targetPhone.length > 10) phoneVariants.push(targetPhone.substring(2));
+    if (!targetPhone.startsWith("55")) phoneVariants.push("55" + targetPhone);
 
     for (const variant of phoneVariants) {
       const snap = await guestsRef.where("phone", "==", variant).limit(1).get();
-      if (!snap.empty) {
-        matchedDoc = snap.docs[0];
-        console.log("[Webhook] Found guest (exact variant):", variant, "| ID:", matchedDoc.id);
-        break;
-      }
+      if (!snap.empty) { matchedDoc = snap.docs[0]; break; }
     }
 
-    // PASSO 2: Fallback — busca TODOS os guests e compara com normalização
+    const matchedIsBad = matchedDoc && (matchedDoc.data().phone.length > 14 || !matchedDoc.data().phone.startsWith("55"));
+    if ((!matchedDoc || matchedIsBad) && lid.length > 5) {
+      const snapLid = await guestsRef.where("lid", "==", lid).get();
+      const goodGuest = snapLid.docs.find(d => {
+        const p = d.data().phone || "";
+        return p.startsWith("55") && p.length >= 10 && p.length <= 13;
+      });
+      if (goodGuest) matchedDoc = goodGuest;
+      else if (!matchedDoc && snapLid.docs.length > 0) matchedDoc = snapLid.docs[0];
+    }
+
     if (!matchedDoc) {
-      console.log("[Webhook] No exact match. Trying in-memory normalized search...");
       const allGuests = await guestsRef.get();
       for (const doc of allGuests.docs) {
-        const storedPhone = doc.data().phone || "";
-        if (phonesMatch(storedPhone, targetPhone)) {
+        if (phonesMatch(doc.data().phone || "", targetPhone) || (lid && lid === doc.data().lid)) {
           matchedDoc = doc;
-          console.log("[Webhook] Found guest (normalized):", storedPhone, "→", targetPhone, "| ID:", doc.id, "| Name:", doc.data().name);
-          // Normaliza o telefone no banco para evitar problemas futuros
-          await guestsRef.doc(doc.id).update({ phone: targetPhone });
-          console.log("[Webhook] Normalized stored phone from", storedPhone, "to", targetPhone);
+          if (phonesMatch(doc.data().phone || "", targetPhone) && doc.data().phone !== targetPhone) {
+            await guestsRef.doc(doc.id).update({ phone: targetPhone });
+          }
           break;
         }
       }
     }
 
     if (!matchedDoc) {
-      // Cria novo guest
-      console.log("[Webhook] No guest found. Creating:", guestName, targetPhone);
       const newGuest = await guestsRef.add({
-        name: guestName,
-        phone: targetPhone,
+        name: guestName, phone: targetPhone, lid: lid,
         avatar: body.photo || `https://ui-avatars.com/api/?name=${guestName}&background=random`,
-        status: "lead",
-        tags: ["WhatsApp"],
-        lastMessage: text,
+        status: "lead", tags: ["WhatsApp"], lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
-        unreadCount: isFromHotel ? 0 : 1,
-        isGroup: isGroup,
+        unreadCount: isFromHotel ? 0 : 1, isGroup: isGroup,
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
       });
       guestId = newGuest.id;
     } else {
-      // Atualiza existente
       guestId = matchedDoc.id;
+      const docData = matchedDoc.data();
       const updateData: any = {
         lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
       };
-      if (!isFromHotel) {
-        updateData.unreadCount = admin.firestore.FieldValue.increment(1);
-      }
+      if (lid && !docData.lid) updateData.lid = lid;
+      const storedPhone = docData.phone || "";
+      const incomingIsValid = targetPhone.startsWith("55") && targetPhone.length >= 10 && targetPhone.length <= 13;
+      const storedIsLidOrBad = storedPhone.length > 14 || !storedPhone.startsWith("55") || storedPhone.includes("@");
+      if (incomingIsValid && (storedIsLidOrBad || !storedPhone)) updateData.phone = targetPhone;
+      if (!isFromHotel) updateData.unreadCount = admin.firestore.FieldValue.increment(1);
       await guestsRef.doc(guestId).update(updateData);
     }
 
-    // Salva a mensagem
-    await db.collection("guests").doc(guestId).collection("messages").add({
+    // --- SALVAR A MENSAGEM COM DE-DUPLICAÇÃO ---
+    const messageId = body.messageId || `internal_${Date.now()}`;
+    await db.collection("guests").doc(guestId).collection("messages").doc(messageId).set({
       text: text,
       sender: senderType,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -220,9 +216,10 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       mediaUrl: mediaUrl,
       status: "read",
       isGroup: isGroup,
-      participantPhone: participantPhone || null,
-      agentName: isFromHotel ? "Hotel (WhatsApp)" : undefined
-    });
+      participantPhone: participantPhone === "Desconhecido" ? null : participantPhone,
+      agentName: isFromHotel ? "Hotel (WhatsApp)" : undefined,
+      zapiId: body.messageId || null
+    }, { merge: true });
 
     res.status(200).send("OK");
 

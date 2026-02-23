@@ -44,6 +44,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
@@ -120,6 +121,9 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     if (!newMessage.trim() || !selectedGuest) return;
     const textToSend = newMessage;
     setNewMessage('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '40px';
+    }
     await sendMessage(selectedGuest.id, selectedGuest.phone, textToSend, 'text', '', agentName);
   };
 
@@ -146,6 +150,31 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     } catch (error) {
       console.error("Erro ao enviar arquivo:", error);
       alert("Erro ao enviar arquivo. Verifique o console ou a conexão.");
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    let imageItem = null;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        imageItem = items[i];
+        break;
+      }
+    }
+
+    if (imageItem && selectedGuest) {
+      const file = imageItem.getAsFile();
+      if (!file) return;
+
+      try {
+        const url = await uploadFile(file);
+        await sendMessage(selectedGuest.id, selectedGuest.phone, '📷 Imagem colada', 'image', url, agentName);
+      } catch (error) {
+        console.error("Erro ao colar imagem:", error);
+        alert("Erro ao enviar imagem colada.");
+      }
     }
   };
 
@@ -422,12 +451,19 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                   accept="image/*,audio/*,video/*,application/pdf"
                 />
                 <textarea
+                  ref={textareaRef}
                   value={newMessage}
-                  onChange={e => setNewMessage(e.target.value)}
+                  onChange={e => {
+                    setNewMessage(e.target.value);
+                    e.target.style.height = 'inherit';
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                  }}
                   onKeyDown={handleKeyPress}
+                  onPaste={handlePaste}
                   placeholder="Digite sua mensagem..."
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-none max-h-24 py-2"
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-none py-2 overflow-y-auto"
                   rows={1}
+                  style={{ height: '40px', minHeight: '40px', maxHeight: '120px' }}
                 />
                 <button onClick={handleSendMessage} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-md transition-transform active:scale-95">
                   <Send size={20} />
