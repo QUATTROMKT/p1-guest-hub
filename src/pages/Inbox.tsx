@@ -48,6 +48,14 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  // Auto-resize textarea quando newMessage muda (cobre templates selecionados)
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '40px';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  }, [newMessage]);
+
   // Ref para guardar referência do guest selecionado
   const selectedGuestRef = useRef<Guest | null>(null);
   useEffect(() => { selectedGuestRef.current = selectedGuest; }, [selectedGuest]);
