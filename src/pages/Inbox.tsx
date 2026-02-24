@@ -456,14 +456,14 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                   onChange={e => {
                     setNewMessage(e.target.value);
                     e.target.style.height = 'inherit';
-                    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
                   }}
                   onKeyDown={handleKeyPress}
                   onPaste={handlePaste}
                   placeholder="Digite sua mensagem..."
                   className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-none py-2 overflow-y-auto"
                   rows={1}
-                  style={{ height: '40px', minHeight: '40px', maxHeight: '120px' }}
+                  style={{ height: '40px', minHeight: '40px', maxHeight: '200px' }}
                 />
                 <button onClick={handleSendMessage} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-md transition-transform active:scale-95">
                   <Send size={20} />

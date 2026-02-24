@@ -11,9 +11,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     const body = req.body;
     console.log("[Webhook] Full Body:", JSON.stringify(body, null, 2));
 
-
     // --- REGRA DE BLOQUEIO DE STATUS E NOTIFICAÇÕES ---
-    // Se for uma notificação de status (RECEIVED, READ, etc), ignora.
     if (body.status || body.connectedPhone) {
       if (!body.text && !body.image && !body.audio && !body.video && !body.document) {
         res.status(200).send("Ignored (Status Update)");
@@ -22,21 +20,15 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     }
 
     // --- REGRA DE BLOQUEIO INTELIGENTE ---
-    // Se a mensagem foi enviada pela API (pelo sistema), ignora para não duplicar.
-    // Mensagens enviadas pelo celular/WhatsApp Web (fromMe=true, fromApi=false) SÃO salvas.
+    // Mensagens enviadas pela API (pelo sistema via chatService) são bloqueadas.
     if (body.fromMe && body.fromApi) {
       res.status(200).send("Ignored (From API/System)");
       return;
     }
 
-    // Determina o remetente: fromMe = enviada pelo celular/WhatsApp Web do hotel
-    const isFromHotel = body.fromMe === true; // Removemos check de fromApi aqui para aceitar do celular
+    const isFromHotel = body.fromMe === true;
     const senderType = isFromHotel ? "agent" : "guest";
 
-    // ... (rest of media handling code) ...
-    // [Note: I'll keep the existing media handling block as is, just updating the context around it]
-
-    // Verificamos se é mídia primeiro para já capturar a URL
     let mediaUrl = "";
     let messageType = "text";
     let text = "";
@@ -66,7 +58,6 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       text = "📍 Localização";
     }
 
-    // Se ainda não temos texto (e não é mídia com caption), tenta extrair do padrão de texto
     if (!text || (messageType === 'text' && !text)) {
       if (body.text && body.text.message) text = body.text.message;
       else if (typeof body.text === 'string') text = body.text;
@@ -74,8 +65,6 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       else if (typeof body.content === 'string') text = body.content;
       else if (body.caption) text = body.caption;
       else if (body.type === 'chat' && body.body) text = body.body;
-
-      // Fallback final
       if (!text) text = "Mensagem Recebida";
     }
 
@@ -84,20 +73,15 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     let targetPhone = "";
     let participantPhone = (body.participantPhone || "").replace(/\D/g, '').replace(/id$/i, '') || "Desconhecido";
 
-    // normaliza telefone para apenas dígitos
     const normalizePhone = (p: string): string => p.replace(/\D/g, '').replace(/id$/i, '');
 
-    // Extrai LID se disponível
     const rawLid = body.chatLid || body.participantLid || (body.phone && body.phone.includes("@lid") ? body.phone : "") || "";
     const lid = normalizePhone(rawLid);
 
-    // Para mensagens fromMe, o chatName tem o nome do destinatário (hóspede)
-    // Para mensagens de hóspedes, senderName tem o nome de quem enviou
     let guestName = isFromHotel
       ? (body.chatName || "Hóspede (WhatsApp)")
       : (body.senderName || body.chatName || "Hóspede (WhatsApp)");
 
-    // Sanitiza nome: se parecer um chatId cru (ex: "274049146044619@lid"), usa fallback
     if (guestName.includes("@") || /^\d{10,}$/.test(guestName)) {
       guestName = "Hóspede (WhatsApp)";
     }
@@ -109,19 +93,16 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       targetPhone = normalizePhone(rawPhone.split('@')[0]);
     }
 
-    console.log("[Webhook] Raw body.phone:", body.phone, "| Parsed targetPhone:", targetPhone, "| LID:", lid, "| fromMe:", body.fromMe);
+    console.log("[Webhook] targetPhone:", targetPhone, "| LID:", lid, "| fromMe:", body.fromMe, "| fromApi:", body.fromApi);
 
-    // Se não tiver telefone, aí sim é erro
     if (targetPhone.length < 5) {
-      console.log("[Webhook] Ignored - phone too short:", targetPhone);
       res.status(200).send("Ignored (No Phone)");
       return;
     }
 
-    // --- SALVAR NO BANCO (com busca flexível de telefone e LID) ---
+    // --- SALVAR NO BANCO ---
     const guestsRef = db.collection("guests");
 
-    // Helper: verifica se dois telefones são o mesmo (com normalização brasileira)
     const phonesMatch = (stored: string, incoming: string): boolean => {
       const a = normalizePhone(stored);
       const b = normalizePhone(incoming);
@@ -169,11 +150,11 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
 
     if (!matchedDoc) {
       const allGuests = await guestsRef.get();
-      for (const doc of allGuests.docs) {
-        if (phonesMatch(doc.data().phone || "", targetPhone) || (lid && lid === doc.data().lid)) {
-          matchedDoc = doc;
-          if (phonesMatch(doc.data().phone || "", targetPhone) && doc.data().phone !== targetPhone) {
-            await guestsRef.doc(doc.id).update({ phone: targetPhone });
+      for (const docSnap of allGuests.docs) {
+        if (phonesMatch(docSnap.data().phone || "", targetPhone) || (lid && lid === docSnap.data().lid)) {
+          matchedDoc = docSnap;
+          if (phonesMatch(docSnap.data().phone || "", targetPhone) && docSnap.data().phone !== targetPhone) {
+            await guestsRef.doc(docSnap.id).update({ phone: targetPhone });
           }
           break;
         }
@@ -206,9 +187,41 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       await guestsRef.doc(guestId).update(updateData);
     }
 
-    // --- SALVAR A MENSAGEM COM DE-DUPLICAÇÃO ---
-    const messageId = body.messageId || `internal_${Date.now()}`;
-    await db.collection("guests").doc(guestId).collection("messages").doc(messageId).set({
+    // --- SALVAR MENSAGEM COM DEDUPLICAÇÃO ROBUSTA ---
+    // Estratégia: quando é eco do sistema (fromMe=true, messageId existe),
+    // buscamos mensagens com localDocId que sejam recentes e mesmo texto.
+    // Essa abordagem não precisa de índice composto.
+    const messagesRef = db.collection("guests").doc(guestId).collection("messages");
+    const zapiMessageId = body.messageId;
+
+    if (isFromHotel && zapiMessageId) {
+      // Busca mensagens do agent com localDocId (enviadas pelo app) nos últimos 3 minutos
+      const threeMinutesAgo = admin.firestore.Timestamp.fromMillis(Date.now() - 180000);
+      const recentLocalMsgs = await messagesRef
+        .where("sender", "==", "agent")
+        .where("createdAt", ">=", threeMinutesAgo)
+        .orderBy("createdAt", "desc")
+        .limit(10)
+        .get();
+
+      // Encontra mensagem local com mesmo texto (eco do sistema)
+      const ecoMsg = recentLocalMsgs.docs.find(d => {
+        const data = d.data();
+        return data.localDocId && data.text === text && !data.zapiId;
+      });
+
+      if (ecoMsg) {
+        // Atualiza o doc existente com o zapiId real — sem duplicar
+        await ecoMsg.ref.update({ zapiId: zapiMessageId, status: "delivered" });
+        console.log("[Webhook] Eco encontrado e zapiId atualizado:", zapiMessageId);
+        res.status(200).send("OK (Echo Deduplicated)");
+        return;
+      }
+    }
+
+    // Salva a mensagem normalmente (mensagem de hóspede ou do hotel via WhatsApp físico)
+    const docId = zapiMessageId || `internal_${Date.now()}`;
+    await messagesRef.doc(docId).set({
       text: text,
       sender: senderType,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -218,14 +231,154 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       isGroup: isGroup,
       participantPhone: participantPhone === "Desconhecido" ? null : participantPhone,
       agentName: isFromHotel ? "Hotel (WhatsApp)" : undefined,
-      zapiId: body.messageId || null
+      zapiId: zapiMessageId || null
     }, { merge: true });
 
     res.status(200).send("OK");
 
   } catch (error) {
     console.error("Erro Fatal:", error);
-    // Retorna OK pro Z-API não travar, mesmo com erro
     res.status(200).send("Error Handled");
+  }
+});
+
+// --- FUNÇÃO DE MERGE DE HÓSPEDES DUPLICADOS ---
+// Chame via GET: https://[url]/mergeGuests
+export const mergeGuests = functions.https.onRequest(async (req, res) => {
+  try {
+    const guestsRef = db.collection("guests");
+    const allSnap = await guestsRef.get();
+    const allGuests = allSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+
+    const normalizePhone = (p: string): string => (p || "").replace(/\D/g, '').replace(/id$/i, '');
+
+    const phonesMatch = (a: string, b: string): boolean => {
+      const na = normalizePhone(a);
+      const nb = normalizePhone(b);
+      if (!na || !nb || na.length < 8 || nb.length < 8) return false;
+      if (na === nb) return true;
+      const strip = (p: string) => p.startsWith("55") && p.length > 10 ? p.substring(2) : p;
+      const naL = strip(na);
+      const nbL = strip(nb);
+      if (naL === nbL) return true;
+      const strip9 = (p: string) => (p.length === 11 && p[2] === '9') ? p.slice(0, 2) + p.slice(3) : p;
+      const add9 = (p: string) => p.length === 10 ? p.slice(0, 2) + '9' + p.slice(2) : p;
+      if (strip9(naL) === strip9(nbL)) return true;
+      if (add9(naL) === nbL || naL === add9(nbL)) return true;
+      if (na.slice(-8) === nb.slice(-8)) return true;
+      return false;
+    };
+
+    // Agrupa hóspedes por telefone
+    const groups: { primary: any; duplicates: any[] }[] = [];
+    const visitedIds = new Set<string>();
+
+    for (const guest of allGuests) {
+      if (visitedIds.has(guest.id)) continue;
+      visitedIds.add(guest.id);
+
+      const group = { primary: guest, duplicates: [] as any[] };
+      const gPhone = normalizePhone(guest.phone);
+
+      for (const other of allGuests) {
+        if (visitedIds.has(other.id)) continue;
+        const oPhone = normalizePhone(other.phone);
+        if (phonesMatch(gPhone, oPhone) || (guest.lid && guest.lid === other.lid)) {
+          group.duplicates.push(other);
+          visitedIds.add(other.id);
+        }
+      }
+
+      if (group.duplicates.length > 0) {
+        groups.push(group);
+      }
+    }
+
+    const report: any[] = [];
+
+    for (const group of groups) {
+      // Escolhe o primário: prefere o com telefone válido (55 + 10-13 dígitos), depois o mais antigo
+      const all = [group.primary, ...group.duplicates];
+      all.sort((a, b) => {
+        const aValid = (a.phone || "").startsWith("55") && a.phone.length >= 10 && a.phone.length <= 13;
+        const bValid = (b.phone || "").startsWith("55") && b.phone.length >= 10 && b.phone.length <= 13;
+        if (aValid && !bValid) return -1;
+        if (!aValid && bValid) return 1;
+        // Prefere o com mais dados preenchidos
+        const aScore = [a.cpf, a.email, a.checkinDate, a.checkoutDate, a.notes].filter(Boolean).length;
+        const bScore = [b.cpf, b.email, b.checkinDate, b.checkoutDate, b.notes].filter(Boolean).length;
+        return bScore - aScore;
+      });
+
+      const primary = all[0];
+      const toMerge = all.slice(1);
+
+      let messagesMovedTotal = 0;
+      const mergedNames: string[] = [];
+
+      for (const dup of toMerge) {
+        mergedNames.push(`${dup.name} (${dup.phone})`);
+
+        // Move mensagens do duplicado para o primário
+        const dupMsgsSnap = await db.collection("guests").doc(dup.id).collection("messages").get();
+        let messagesMoved = 0;
+
+        const batchSize = 400;
+        let batch = db.batch();
+        let batchCount = 0;
+
+        for (const msgDoc of dupMsgsSnap.docs) {
+          const msgData = msgDoc.data();
+          const targetRef = db.collection("guests").doc(primary.id).collection("messages").doc(msgDoc.id);
+          batch.set(targetRef, msgData, { merge: true });
+          batchCount++;
+          messagesMoved++;
+
+          if (batchCount >= batchSize) {
+            await batch.commit();
+            batch = db.batch();
+            batchCount = 0;
+          }
+        }
+        if (batchCount > 0) await batch.commit();
+
+        // Mescla dados do duplicado no primário (não sobrescreve campos já preenchidos)
+        const mergeUpdate: any = {};
+        if (!primary.cpf && dup.cpf) mergeUpdate.cpf = dup.cpf;
+        if (!primary.email && dup.email) mergeUpdate.email = dup.email;
+        if (!primary.notes && dup.notes) mergeUpdate.notes = dup.notes;
+        if (!primary.checkinDate && dup.checkinDate) mergeUpdate.checkinDate = dup.checkinDate;
+        if (!primary.checkoutDate && dup.checkoutDate) mergeUpdate.checkoutDate = dup.checkoutDate;
+        if (dup.tags && dup.tags.length > 0) {
+          const mergedTags = Array.from(new Set([...(primary.tags || []), ...dup.tags]));
+          mergeUpdate.tags = mergedTags;
+        }
+        if (Object.keys(mergeUpdate).length > 0) {
+          await guestsRef.doc(primary.id).update(mergeUpdate);
+          Object.assign(primary, mergeUpdate);
+        }
+
+        // Deleta o duplicado
+        await guestsRef.doc(dup.id).delete();
+        messagesMovedTotal += messagesMoved;
+      }
+
+      report.push({
+        primary: `${primary.name} (${primary.phone})`,
+        merged: mergedNames,
+        messagesMoved: messagesMovedTotal
+      });
+    }
+
+    console.log("[mergeGuests] Relatório:", JSON.stringify(report, null, 2));
+    res.status(200).json({
+      success: true,
+      groupsMerged: report.length,
+      report
+    });
+
+  } catch (error) {
+    console.error("[mergeGuests] Erro:", error);
+    res.status(500).json({ success: false, error: String(error) });
   }
 });

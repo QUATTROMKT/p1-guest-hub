@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { initializeFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -57,15 +57,23 @@ export const sendMessage = async (
 ) => {
   if (!text.trim() && !mediaUrl) return;
 
-  // 1. SALVA NA TELA IMEDIATAMENTE
-  await addDoc(collection(db, "guests", guestId, "messages"), {
+  // Gera um ID local único que será usado como doc ID
+  // O webhook do Z-API vai usar o messageId retornado — ao usar set(merge) no webhook
+  // com o zapiId como doc ID, vai sobrescrever o doc existente sem duplicar.
+  // Usamos um ID local temporário que começa com "local_" para fácil identificação.
+  const localDocId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+  // 1. SALVA NA TELA IMEDIATAMENTE com o ID local
+  const messagesCol = collection(db, "guests", guestId, "messages");
+  await setDoc(doc(messagesCol, localDocId), {
     text,
     sender: 'agent',
     createdAt: serverTimestamp(),
     type,
     mediaUrl,
     agentName,
-    status: 'sent'
+    status: 'sent',
+    localDocId, // marca para o webhook identificar e substituir
   });
 
   await updateDoc(doc(db, "guests", guestId), {
@@ -92,11 +100,6 @@ export const sendMessage = async (
       const ext = mediaUrl.split('.').pop()?.split('?')[0] || 'pdf';
       url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-document/${ext}`;
       body = { phone: cleanPhone, document: mediaUrl, fileName: text || 'Documento' };
-    } else if (type === 'location') {
-      // Assumindo que mediaUrl tem "lat,lng" ou algo assim, mas location geralmente é complexo
-      // Se for location, vamos simplificar e mandar como link por enquanto se não tiver coords
-      // Mas se tiver coords:
-      // body = { phone: cleanPhone, latitude: ..., longitude: ..., title: 'Localização' }
     }
 
     await fetch(url, {
