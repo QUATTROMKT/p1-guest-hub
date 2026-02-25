@@ -101,6 +101,8 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     let targetPhone = "";
     let participantPhone = normalizePhone(body.participantPhone || "");
     if (!participantPhone) participantPhone = "Desconhecido";
+    // Nome do participante em grupos (vem do senderName do Z-API)
+    const participantName = isGroup ? (body.senderName || "") : "";
 
     const rawLid = body.chatLid || body.participantLid || (body.phone && body.phone.includes("@lid") ? body.phone : "") || "";
     const lid = normalizePhone(rawLid);
@@ -255,6 +257,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       status: "read",
       isGroup: isGroup,
       participantPhone: participantPhone === "Desconhecido" ? null : participantPhone,
+      participantName: participantName || undefined,
       agentName: isFromHotel ? "Hotel (WhatsApp)" : undefined,
       zapiId: zapiMessageId || null
     }, { merge: true });

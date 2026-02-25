@@ -15,6 +15,7 @@ interface Message {
   agentName?: string;
   isGroup?: boolean;
   participantPhone?: string;
+  participantName?: string;
 }
 interface Guest {
   id: string; name: string; phone: string; avatar: string;
@@ -412,7 +413,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                     )}
                     <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.text || ''}</p>
                     <div className="flex justify-between items-end mt-1 gap-2">
-                      {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantPhone?.slice(-4) || 'Membro'}</span>}
+                      {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantName || (msg.participantPhone ? `+${msg.participantPhone.slice(-8, -4)}-${msg.participantPhone.slice(-4)}` : 'Membro')}</span>}
                       {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
                       <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-300'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
                     </div>
@@ -483,7 +484,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
       </div>
 
       {/* BARRA LATERAL DIREITA - DETALHES */}
-      <div className="w-80 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 overflow-y-auto hidden xl:block transition-colors duration-200">
+      <div className="w-80 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 overflow-y-auto hidden lg:block transition-colors duration-200">
         {selectedGuest ? (
           <>
             <div className="flex border-b border-slate-100 dark:border-slate-700">
@@ -522,6 +523,62 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                     </select>
                   </div>
                 </div>
+
+                {/* MEMBROS DO GRUPO */}
+                {selectedGuest?.isGroup && (
+                  <div className="p-4 border-b border-slate-100 dark:border-slate-700">
+                    <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <User size={12} /> Membros do Grupo ({(() => {
+                        const members = new Map<string, string>();
+                        messages.forEach(m => {
+                          if (m.sender === 'guest' && (m.participantPhone || m.participantName)) {
+                            const key = m.participantPhone || m.participantName || '';
+                            if (!members.has(key)) {
+                              members.set(key, m.participantName || m.participantPhone || 'Membro');
+                            }
+                          }
+                        });
+                        return members.size;
+                      })()})
+                    </h3>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {(() => {
+                        const members = new Map<string, { name: string; phone: string; lastSeen: number }>();
+                        messages.forEach(m => {
+                          if (m.sender === 'guest' && (m.participantPhone || m.participantName)) {
+                            const key = m.participantPhone || m.participantName || '';
+                            const existing = members.get(key);
+                            const ts = m.createdAt?.seconds || 0;
+                            if (!existing || ts > existing.lastSeen) {
+                              members.set(key, {
+                                name: m.participantName || '',
+                                phone: m.participantPhone || '',
+                                lastSeen: ts,
+                              });
+                            }
+                          }
+                        });
+                        return Array.from(members.values()).map((member, i) => (
+                          <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-700/50">
+                            <div className="w-7 h-7 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400 text-xs font-bold">
+                              {(member.name || member.phone || '?')[0].toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
+                                {member.name || 'Membro'}
+                              </p>
+                              {member.phone && (
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                                  {member.phone}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-6 space-y-6">
                   <div>
