@@ -6,6 +6,31 @@ admin.initializeApp();
 const db = getFirestore("p1hotel");
 db.settings({ ignoreUndefinedProperties: true });
 
+// Helpers globais
+const normalizePhone = (p: string): string => (p || "").replace(/\D/g, '').replace(/id$/i, '');
+
+const phonesMatch = (stored: string, incoming: string): boolean => {
+  const a = normalizePhone(stored);
+  const b = normalizePhone(incoming);
+  if (!a || !b || a.length < 8 || b.length < 8) return false;
+  if (a === b) return true;
+
+  const stripCountry = (p: string) => p.startsWith("55") && p.length > 10 ? p.substring(2) : p;
+  const aLocal = stripCountry(a);
+  const bLocal = stripCountry(b);
+  if (aLocal === bLocal) return true;
+
+  const strip9thDigit = (p: string) => (p.length === 11 && p[2] === '9') ? p.slice(0, 2) + p.slice(3) : p;
+  const add9thDigit = (p: string) => (p.length === 10) ? p.slice(0, 2) + '9' + p.slice(2) : p;
+
+  if (strip9thDigit(aLocal) === strip9thDigit(bLocal)) return true;
+  if (add9thDigit(aLocal) === bLocal || aLocal === add9thDigit(bLocal)) return true;
+  if (strip9thDigit(aLocal) === bLocal || aLocal === strip9thDigit(bLocal)) return true;
+  if (a.slice(-8) === b.slice(-8)) return true;
+
+  return false;
+};
+
 export const zapiWebhook = functions.https.onRequest(async (req, res) => {
   try {
     const body = req.body;
@@ -19,8 +44,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       }
     }
 
-    // --- REGRA DE BLOQUEIO INTELIGENTE ---
-    // Mensagens enviadas pela API (pelo sistema via chatService) são bloqueadas.
+    // --- REGRA DE BLOQUEIO: mensagens enviadas pela API do sistema são ignoradas ---
     if (body.fromMe && body.fromApi) {
       res.status(200).send("Ignored (From API/System)");
       return;
@@ -29,26 +53,29 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     const isFromHotel = body.fromMe === true;
     const senderType = isFromHotel ? "agent" : "guest";
 
+    // --- EXTRAIR MÍDIA E TEXTO ---
     let mediaUrl = "";
     let messageType = "text";
     let text = "";
 
     if (body.image) {
       messageType = "image";
-      mediaUrl = body.image.imageUrl || "";
+      mediaUrl = body.image.imageUrl || body.image.url || "";
       text = body.image.caption || "📷 Imagem";
     } else if (body.audio) {
       messageType = "audio";
-      mediaUrl = body.audio.audioUrl || "";
+      mediaUrl = body.audio.audioUrl || body.audio.url || "";
       text = "🎤 Áudio";
     } else if (body.video) {
       messageType = "video";
-      mediaUrl = body.video.videoUrl || "";
+      mediaUrl = body.video.videoUrl || body.video.url || "";
       text = body.video.caption || "🎥 Vídeo";
     } else if (body.document) {
       messageType = "document";
-      mediaUrl = body.document.documentUrl || "";
-      text = body.document.fileName || "📄 Documento";
+      // Z-API pode mandar em diversos campos: documentUrl, url, document
+      mediaUrl = body.document.documentUrl || body.document.url || body.document.document || "";
+      text = body.document.fileName || body.document.title || "📄 Documento";
+      console.log("[Webhook] Document payload:", JSON.stringify(body.document));
     } else if (body.sticker) {
       messageType = "sticker";
       text = "💟 Figurinha";
@@ -58,6 +85,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       text = "📍 Localização";
     }
 
+    // Se ainda não temos texto, tenta extrair do padrão de texto
     if (!text || (messageType === 'text' && !text)) {
       if (body.text && body.text.message) text = body.text.message;
       else if (typeof body.text === 'string') text = body.text;
@@ -71,9 +99,8 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     // --- IDENTIFICAR O HÓSPEDE (OU GRUPO) ---
     const isGroup = body.isGroup === true;
     let targetPhone = "";
-    let participantPhone = (body.participantPhone || "").replace(/\D/g, '').replace(/id$/i, '') || "Desconhecido";
-
-    const normalizePhone = (p: string): string => p.replace(/\D/g, '').replace(/id$/i, '');
+    let participantPhone = normalizePhone(body.participantPhone || "");
+    if (!participantPhone) participantPhone = "Desconhecido";
 
     const rawLid = body.chatLid || body.participantLid || (body.phone && body.phone.includes("@lid") ? body.phone : "") || "";
     const lid = normalizePhone(rawLid);
@@ -93,41 +120,20 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       targetPhone = normalizePhone(rawPhone.split('@')[0]);
     }
 
-    console.log("[Webhook] targetPhone:", targetPhone, "| LID:", lid, "| fromMe:", body.fromMe, "| fromApi:", body.fromApi);
+    console.log("[Webhook] targetPhone:", targetPhone, "| LID:", lid, "| fromMe:", body.fromMe, "| fromApi:", body.fromApi, "| senderType:", senderType);
 
     if (targetPhone.length < 5) {
+      console.log("[Webhook] Ignored - phone too short:", targetPhone);
       res.status(200).send("Ignored (No Phone)");
       return;
     }
 
-    // --- SALVAR NO BANCO ---
+    // --- BUSCAR HÓSPEDE NO BANCO ---
     const guestsRef = db.collection("guests");
-
-    const phonesMatch = (stored: string, incoming: string): boolean => {
-      const a = normalizePhone(stored);
-      const b = normalizePhone(incoming);
-      if (!a || !b || a.length < 8 || b.length < 8) return false;
-      if (a === b) return true;
-
-      const stripCountry = (p: string) => p.startsWith("55") && p.length > 10 ? p.substring(2) : p;
-      const aLocal = stripCountry(a);
-      const bLocal = stripCountry(b);
-      if (aLocal === bLocal) return true;
-
-      const strip9thDigit = (p: string) => (p.length === 11 && p[2] === '9') ? p.slice(0, 2) + p.slice(3) : p;
-      const add9thDigit = (p: string) => (p.length === 10) ? p.slice(0, 2) + '9' + p.slice(2) : p;
-
-      if (strip9thDigit(aLocal) === strip9thDigit(bLocal)) return true;
-      if (add9thDigit(aLocal) === bLocal || aLocal === add9thDigit(bLocal)) return true;
-      if (strip9thDigit(aLocal) === bLocal || aLocal === strip9thDigit(bLocal)) return true;
-      if (a.slice(-8) === b.slice(-8)) return true;
-
-      return false;
-    };
-
     let guestId = "";
     let matchedDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
+    // 1. Busca por telefone exato e variantes
     const phoneVariants: string[] = [targetPhone];
     if (targetPhone.startsWith("55") && targetPhone.length > 10) phoneVariants.push(targetPhone.substring(2));
     if (!targetPhone.startsWith("55")) phoneVariants.push("55" + targetPhone);
@@ -137,6 +143,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       if (!snap.empty) { matchedDoc = snap.docs[0]; break; }
     }
 
+    // 2. Se não achou ou achou um "ruim", busca por LID
     const matchedIsBad = matchedDoc && (matchedDoc.data().phone.length > 14 || !matchedDoc.data().phone.startsWith("55"));
     if ((!matchedDoc || matchedIsBad) && lid.length > 5) {
       const snapLid = await guestsRef.where("lid", "==", lid).get();
@@ -148,19 +155,27 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       else if (!matchedDoc && snapLid.docs.length > 0) matchedDoc = snapLid.docs[0];
     }
 
+    // 3. Busca completa por phonesMatch + LID
     if (!matchedDoc) {
       const allGuests = await guestsRef.get();
       for (const docSnap of allGuests.docs) {
-        if (phonesMatch(docSnap.data().phone || "", targetPhone) || (lid && lid === docSnap.data().lid)) {
+        const dPhone = docSnap.data().phone || "";
+        const dLid = docSnap.data().lid || "";
+        if (phonesMatch(dPhone, targetPhone) || (lid && lid.length > 5 && lid === dLid)) {
           matchedDoc = docSnap;
-          if (phonesMatch(docSnap.data().phone || "", targetPhone) && docSnap.data().phone !== targetPhone) {
-            await guestsRef.doc(docSnap.id).update({ phone: targetPhone });
+          // Corrige o telefone armazenado se o novo for melhor
+          if (phonesMatch(dPhone, targetPhone) && dPhone !== targetPhone) {
+            const incomingIsValid = targetPhone.startsWith("55") && targetPhone.length >= 10 && targetPhone.length <= 13;
+            if (incomingIsValid) {
+              await guestsRef.doc(docSnap.id).update({ phone: targetPhone });
+            }
           }
           break;
         }
       }
     }
 
+    // 4. Cria novo hóspede ou atualiza existente
     if (!matchedDoc) {
       const newGuest = await guestsRef.add({
         name: guestName, phone: targetPhone, lid: lid,
@@ -171,6 +186,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
       });
       guestId = newGuest.id;
+      console.log("[Webhook] Novo hóspede criado:", guestId, guestName, targetPhone);
     } else {
       guestId = matchedDoc.id;
       const docData = matchedDoc.data();
@@ -179,47 +195,56 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
       };
       if (lid && !docData.lid) updateData.lid = lid;
+      // Atualiza nome se o atual for genérico
+      if (guestName !== "Hóspede (WhatsApp)" && (docData.name === "Hóspede (WhatsApp)" || !docData.name)) {
+        updateData.name = guestName;
+      }
       const storedPhone = docData.phone || "";
       const incomingIsValid = targetPhone.startsWith("55") && targetPhone.length >= 10 && targetPhone.length <= 13;
       const storedIsLidOrBad = storedPhone.length > 14 || !storedPhone.startsWith("55") || storedPhone.includes("@");
       if (incomingIsValid && (storedIsLidOrBad || !storedPhone)) updateData.phone = targetPhone;
       if (!isFromHotel) updateData.unreadCount = admin.firestore.FieldValue.increment(1);
       await guestsRef.doc(guestId).update(updateData);
+      console.log("[Webhook] Hóspede encontrado:", guestId, docData.name, "| matchedPhone:", storedPhone);
     }
 
-    // --- SALVAR MENSAGEM COM DEDUPLICAÇÃO ROBUSTA ---
-    // Estratégia: quando é eco do sistema (fromMe=true, messageId existe),
-    // buscamos mensagens com localDocId que sejam recentes e mesmo texto.
-    // Essa abordagem não precisa de índice composto.
+    // --- SALVAR MENSAGEM COM DEDUPLICAÇÃO ---
     const messagesRef = db.collection("guests").doc(guestId).collection("messages");
     const zapiMessageId = body.messageId;
 
+    // Deduplicação para ecos do sistema (quando fromMe=true):
+    // Busca SÓ por sender=agent (filtro simples, sem índice composto) e compara em memória
     if (isFromHotel && zapiMessageId) {
-      // Busca mensagens do agent com localDocId (enviadas pelo app) nos últimos 3 minutos
-      const threeMinutesAgo = admin.firestore.Timestamp.fromMillis(Date.now() - 180000);
-      const recentLocalMsgs = await messagesRef
-        .where("sender", "==", "agent")
-        .where("createdAt", ">=", threeMinutesAgo)
-        .orderBy("createdAt", "desc")
-        .limit(10)
-        .get();
+      try {
+        const recentAgentMsgs = await messagesRef
+          .where("sender", "==", "agent")
+          .orderBy("createdAt", "desc")
+          .limit(15)
+          .get();
 
-      // Encontra mensagem local com mesmo texto (eco do sistema)
-      const ecoMsg = recentLocalMsgs.docs.find(d => {
-        const data = d.data();
-        return data.localDocId && data.text === text && !data.zapiId;
-      });
+        const threeMinutesAgo = Date.now() - 180000;
+        const ecoMsg = recentAgentMsgs.docs.find(d => {
+          const data = d.data();
+          if (!data.localDocId || data.zapiId) return false;
+          if (data.text !== text) return false;
+          // Verifica se é recente (sem usar filtro composto)
+          const msgTime = data.createdAt?.toMillis?.() || 0;
+          return msgTime > threeMinutesAgo || msgTime === 0; // 0 = serverTimestamp pendente
+        });
 
-      if (ecoMsg) {
-        // Atualiza o doc existente com o zapiId real — sem duplicar
-        await ecoMsg.ref.update({ zapiId: zapiMessageId, status: "delivered" });
-        console.log("[Webhook] Eco encontrado e zapiId atualizado:", zapiMessageId);
-        res.status(200).send("OK (Echo Deduplicated)");
-        return;
+        if (ecoMsg) {
+          await ecoMsg.ref.update({ zapiId: zapiMessageId, status: "delivered" });
+          console.log("[Webhook] Eco detectado! zapiId atualizado:", zapiMessageId);
+          res.status(200).send("OK (Echo Deduplicated)");
+          return;
+        }
+      } catch (dedupeError) {
+        // Se a query de deduplicação falhar (ex: índice), continua e salva normalmente
+        console.warn("[Webhook] Deduplicação falhou, salvando normalmente:", dedupeError);
       }
     }
 
-    // Salva a mensagem normalmente (mensagem de hóspede ou do hotel via WhatsApp físico)
+    // Salva a mensagem normalmente
     const docId = zapiMessageId || `internal_${Date.now()}`;
     await messagesRef.doc(docId).set({
       text: text,
@@ -234,6 +259,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       zapiId: zapiMessageId || null
     }, { merge: true });
 
+    console.log("[Webhook] Mensagem salva:", docId, "| tipo:", messageType, "| mediaUrl:", mediaUrl ? "SIM" : "NÃO");
     res.status(200).send("OK");
 
   } catch (error) {
@@ -243,31 +269,11 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
 });
 
 // --- FUNÇÃO DE MERGE DE HÓSPEDES DUPLICADOS ---
-// Chame via GET: https://[url]/mergeGuests
 export const mergeGuests = functions.https.onRequest(async (req, res) => {
   try {
     const guestsRef = db.collection("guests");
     const allSnap = await guestsRef.get();
     const allGuests = allSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
-
-    const normalizePhone = (p: string): string => (p || "").replace(/\D/g, '').replace(/id$/i, '');
-
-    const phonesMatch = (a: string, b: string): boolean => {
-      const na = normalizePhone(a);
-      const nb = normalizePhone(b);
-      if (!na || !nb || na.length < 8 || nb.length < 8) return false;
-      if (na === nb) return true;
-      const strip = (p: string) => p.startsWith("55") && p.length > 10 ? p.substring(2) : p;
-      const naL = strip(na);
-      const nbL = strip(nb);
-      if (naL === nbL) return true;
-      const strip9 = (p: string) => (p.length === 11 && p[2] === '9') ? p.slice(0, 2) + p.slice(3) : p;
-      const add9 = (p: string) => p.length === 10 ? p.slice(0, 2) + '9' + p.slice(2) : p;
-      if (strip9(naL) === strip9(nbL)) return true;
-      if (add9(naL) === nbL || naL === add9(nbL)) return true;
-      if (na.slice(-8) === nb.slice(-8)) return true;
-      return false;
-    };
 
     // Agrupa hóspedes por telefone
     const groups: { primary: any; duplicates: any[] }[] = [];
@@ -278,12 +284,10 @@ export const mergeGuests = functions.https.onRequest(async (req, res) => {
       visitedIds.add(guest.id);
 
       const group = { primary: guest, duplicates: [] as any[] };
-      const gPhone = normalizePhone(guest.phone);
 
       for (const other of allGuests) {
         if (visitedIds.has(other.id)) continue;
-        const oPhone = normalizePhone(other.phone);
-        if (phonesMatch(gPhone, oPhone) || (guest.lid && guest.lid === other.lid)) {
+        if (phonesMatch(guest.phone || "", other.phone || "") || (guest.lid && guest.lid.length > 5 && guest.lid === other.lid)) {
           group.duplicates.push(other);
           visitedIds.add(other.id);
         }
@@ -297,14 +301,13 @@ export const mergeGuests = functions.https.onRequest(async (req, res) => {
     const report: any[] = [];
 
     for (const group of groups) {
-      // Escolhe o primário: prefere o com telefone válido (55 + 10-13 dígitos), depois o mais antigo
       const all = [group.primary, ...group.duplicates];
+      // Ordena para escolher o melhor como primário
       all.sort((a, b) => {
         const aValid = (a.phone || "").startsWith("55") && a.phone.length >= 10 && a.phone.length <= 13;
         const bValid = (b.phone || "").startsWith("55") && b.phone.length >= 10 && b.phone.length <= 13;
         if (aValid && !bValid) return -1;
         if (!aValid && bValid) return 1;
-        // Prefere o com mais dados preenchidos
         const aScore = [a.cpf, a.email, a.checkinDate, a.checkoutDate, a.notes].filter(Boolean).length;
         const bScore = [b.cpf, b.email, b.checkinDate, b.checkoutDate, b.notes].filter(Boolean).length;
         return bScore - aScore;
@@ -312,17 +315,14 @@ export const mergeGuests = functions.https.onRequest(async (req, res) => {
 
       const primary = all[0];
       const toMerge = all.slice(1);
-
       let messagesMovedTotal = 0;
       const mergedNames: string[] = [];
 
       for (const dup of toMerge) {
         mergedNames.push(`${dup.name} (${dup.phone})`);
 
-        // Move mensagens do duplicado para o primário
         const dupMsgsSnap = await db.collection("guests").doc(dup.id).collection("messages").get();
         let messagesMoved = 0;
-
         const batchSize = 400;
         let batch = db.batch();
         let batchCount = 0;
@@ -331,7 +331,9 @@ export const mergeGuests = functions.https.onRequest(async (req, res) => {
           const msgData = msgDoc.data();
           const targetRef = db.collection("guests").doc(primary.id).collection("messages").doc(msgDoc.id);
           batch.set(targetRef, msgData, { merge: true });
-          batchCount++;
+          // Delete do doc original
+          batch.delete(msgDoc.ref);
+          batchCount += 2;
           messagesMoved++;
 
           if (batchCount >= batchSize) {
@@ -342,13 +344,19 @@ export const mergeGuests = functions.https.onRequest(async (req, res) => {
         }
         if (batchCount > 0) await batch.commit();
 
-        // Mescla dados do duplicado no primário (não sobrescreve campos já preenchidos)
+        // Mescla dados
         const mergeUpdate: any = {};
         if (!primary.cpf && dup.cpf) mergeUpdate.cpf = dup.cpf;
         if (!primary.email && dup.email) mergeUpdate.email = dup.email;
         if (!primary.notes && dup.notes) mergeUpdate.notes = dup.notes;
         if (!primary.checkinDate && dup.checkinDate) mergeUpdate.checkinDate = dup.checkinDate;
         if (!primary.checkoutDate && dup.checkoutDate) mergeUpdate.checkoutDate = dup.checkoutDate;
+        if (dup.lid && !primary.lid) mergeUpdate.lid = dup.lid;
+        // Atualiza nome se o primário tem nome genérico
+        if (primary.name === "Hóspede (WhatsApp)" && dup.name && dup.name !== "Hóspede (WhatsApp)") {
+          mergeUpdate.name = dup.name;
+          primary.name = dup.name;
+        }
         if (dup.tags && dup.tags.length > 0) {
           const mergedTags = Array.from(new Set([...(primary.tags || []), ...dup.tags]));
           mergeUpdate.tags = mergedTags;
@@ -358,7 +366,6 @@ export const mergeGuests = functions.https.onRequest(async (req, res) => {
           Object.assign(primary, mergeUpdate);
         }
 
-        // Deleta o duplicado
         await guestsRef.doc(dup.id).delete();
         messagesMovedTotal += messagesMoved;
       }
