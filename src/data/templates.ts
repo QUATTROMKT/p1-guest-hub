@@ -2,30 +2,179 @@ export const messageTemplates = [
   {
     id: 'tarifario_padrao',
     title: '💰 Tarifário Padrão',
-    text: `Standard (Sem frigobar)
-Standard individual - R$ 189,00
-Standard casal - R$ 229,00
-Standard duplo (Cama casal + Cama solteiro) - R$ 249,00
-Standard triplo - R$ 279,00
-Standard quádruplo (04 camas individuais) - R$ 329,00
+    text: `TARIFÁRIO
+Standard triplo econômico (03 camas individuais/ sem TV e Sem Frigobar)
+Triplo 01 pax - R$135,00
+Triplo 02 pax - R$155,00
+Triplo 03 pax – R$175,00
+
+Standard quádruplo (04 camas individuais/ sem frigobar) 
+Quádruplo 01 pax - R$ 189,00
+Quádruplo 02 pax - R$ 219,00
+Quádruplo 03 pax – R$ 249,00
+Quádruplo 04 pax - R$ 269,00
 
 Standard Plus (Com frigobar)
-Standard Plus individual - R$ 219,00
-Standard Plus casal - R$ 259,00
-Standard Plus duplo - R$ 279,00
-Standard Plus triplo - R$ 299,00
+Standard Plus individual (01 cama casal) - R$ 189,00
+Standard Plus casal (01 cama casal)  - R$ 209,00
+Standard Plus duplo (02 camas individuais) - R$ 219,00
+Standard Plus triplo (01 cama casal + 01 cama individual) - R$ 249,00
+
+Apart Família (ap completo/cama casal + 2 camas individuais)
+Apart Família 01 pax- R$199,00
+Apart Família 02 pax- R$219,00
+Apart Família 03 pax- R$259,00
+Apart Família 04 pax- R$279,00
 
 Superior Luxo
 Luxo individual - R$ 270,00
 Luxo casal - R$ 310,00
-Luxo duplo - R$ 330,00
-Luxo triplo - R$ 360,00
+Luxo duplo (02 camas individuais)  - R$ 330,00
+Luxo triplo (01 cama casal + 01 cama individual)  - R$ 360,00
 
-•  Café da manhã incluso no valor da diária
+• Café da manhã incluso no valor da diária
 
-•  Taxa Pet R$50,00.
+• Taxa Pet R$50,00.
 
-•  Estacionamento cortesia na categoria Luxo. Demais categorias, acréscimo de R$20,00.`
+• Estacionamento cortesia na categoria Luxo. Demais categorias, acréscimo de R$20,00.`
+  },
+  {
+    id: 'promo_minima',
+    title: '🔥 Promocional Mínima',
+    text: `Tarifa promocional
+
+Standard quádruplo (04 camas individuais/ sem frigobar) 
+Quádruplo 01 pax - R$ 113,40
+Quádruplo 02 pax - R$ 131,40
+Quádruplo 03 pax – R$ 149,40
+Quádruplo 04 pax - R$ 161,40
+
+Standard Plus (Com frigobar)
+Standard Plus individual (01 cama casal) - R$ 113,40
+Standard Plus casal (01 cama casal)  - R$ 125,40
+Standard Plus duplo (02 camas individuais) - R$ 131,40
+Standard Plus triplo (01 cama casal + 01 cama individual) - R$149,40
+
+Apart Família (ap completo/cama casal + 2 camas individuais)
+Apart Família 01 pax- R$199,00
+Apart Família 02 pax- R$219,00
+Apart Família 03 pax- R$259,00
+Apart Família 04 pax- R$279,00
+
+Superior Luxo
+Luxo individual - R$ 162,00
+Luxo casal - R$ 186,00
+Luxo duplo (02 camas individuais)  - R$ 198,00
+Luxo triplo (01 cama casal + 01 cama individual)  - R$ 216,00
+
+• Café da manhã incluso no valor da diária
+
+• Taxa Pet R$50,00.
+
+• Estacionamento cortesia na categoria Luxo. Demais categorias, acréscimo de R$20,00.`
+  },
+  {
+    id: 'promo_baixa',
+    title: '🔥 Promocional Baixa',
+    text: `Tarifa promocional
+
+Standard quádruplo (04 camas individuais/ sem frigobar) 
+Quádruplo 01 pax - R$ 141,75
+Quádruplo 02 pax - R$ 164,25
+Quádruplo 03 pax – R$ 186,75
+Quádruplo 04 pax - R$ 201,75
+
+Standard Plus (Com frigobar)
+Standard Plus individual (01 cama casal) - R$ 141,75
+Standard Plus casal (01 cama casal)  - R$ 156,75
+Standard Plus duplo (02 camas individuais) - R$ 164,25
+Standard Plus triplo (01 cama casal + 01 cama individual) - R$ 186,75
+
+Apart Família (ap completo/cama casal + 2 camas individuais)
+Apart Família 01 pax- R$199,00
+Apart Família 02 pax- R$219,00
+Apart Família 03 pax- R$259,00
+Apart Família 04 pax- R$279,00
+
+Superior Luxo
+Luxo individual - R$ 202,50
+Luxo casal - R$ 232,50
+Luxo duplo (02 camas individuais)  - R$ 247,50
+Luxo triplo (01 cama casal + 01 cama individual)  - R$ 270,00
+
+• Café da manhã incluso no valor da diária
+
+• Taxa Pet R$50,00.
+
+• Estacionamento cortesia na categoria Luxo. Demais categorias, acréscimo de R$20,00.`
+  },
+  {
+    id: 'diferencas_aptos',
+    title: '🏨 Diferenças dos Apartamentos',
+    text: `O Quarto quádruplo há:
+Camas individuais
+Ar condicionado split
+Chuveiro a gás
+Tv Smart
+
+O quarto standard plus há:
+Cama casal queen
+Ar condicionado split
+Chuveiro a gás
+Frigobar
+Secador de cabelo
+Tv Smart
+
+Quarto luxo há:
+Cama casal king
+Ar condicionado split
+Chuveiro a gás
+Frigobar
+Micro ondas
+Poltrona
+Secador de cabelo
+Tv Smart
+
+No quarto apart há:
+Cama casal 
+Camas de solteiro
+Ar condicionado split
+Chuveiro a gás
+Frigobar
+Micro ondas
+Poltrona
+Secador de cabelo
+Mini cozinha integrada
+Tv Smart`
+  },
+  {
+    id: 'rep_comercial',
+    title: '💼 Representante Comercial',
+    text: `*Tarifa representante comercial*
+Single Standard Plus (01 cama casal) - R$185,00
+Duplo Standard Plus(02 camas individuais) - R$219,00
+Luxo Single(01 cama casal) - R$220,00
+Luxo Duplo(02 camas individuais) - R$270,00
+
+•  Estacionamento e café da manhã já incluso
+
+*Reiteramos que nossa tarifa representante é válida somente para apartamentos individuais ou duplos, apartamentos casal o valor encontra-se na tabela normal.*`
+  },
+  {
+    id: 'policia_penal',
+    title: '🛡️ Polícia Penal',
+    text: `Tarifa acordo com o pessoal da Policia Penal, virão seguido ao hotel e sempre em duplas, por isso os valores serão referentes a quartos duplos, segue tarifário:
+
+1. Duplo econômico (sem frigobar e sem TV)- R$ 200,00
+2. Duplo Standard ( sem frigobar e com TV) - R$ 224,00
+3. Duplo Plus (com frigobar e com TV) - R$ 249,00.
+
+Todos com café da manhã e estacionamento inclusos`
+  },
+  {
+    id: 'endereco',
+    title: '📍 Endereço',
+    text: `Rua Olavo Bilac, 365, Nossa Sra de Fatima, Santa Maria RS, 97015-440, Brasil`
   },
   {
     id: 'confirmacao_reserva',
@@ -129,15 +278,6 @@ Check-in: a partir de las 14:00 h.
 Check-out: hasta las 12:00 h.`
   },
   {
-    id: 'rep_comercial',
-    title: '💼 Representante Comercial',
-    text: `Tarifa representante comercial
-Standard individual - R$ 170,00
-Standard Plus individual - R$ 190,00
-•  Estacionamento e café da manhã já incluso
-Reiteramos que nossa tarifa representante é válida somente para apartamentos individuais, caso sejam apartamentos duplos ou casal o valor encontra-se na tabela normal.`
-  },
-  {
     id: 'pix',
     title: '💲 Pix P1 Hotel',
     text: `Nosso PIX é celular: 55999114969
@@ -198,31 +338,5 @@ Data de Check-In e Check-Out.
 Categoria do apto. 
 CNPJ da empresa. 
 E-mail para envio da Nota Fiscal e o que será faturado (se apenas diárias ou diárias e extras, como jantar, bebidas etc).`
-  },
-  {
-    id: 'infos_quartos',
-    title: '🛏️ Infos Quartos',
-    text: `O quarto standard há:
-Cama casal queen
-Ar condicionado split
-Chuveiro a gás
-Frigobar
-Secador de cabelo
-
-O quarto standard plus há:
-Cama casal queen
-Ar condicionado split
-Chuveiro a gás
-Frigobar
-Secador de cabelo
-
-Quarto luxo há:
-Cama casal king
-Ar condicionado split
-Chuveiro a gás
-Frigobar
-Micro ondas
-Poltrona
-Secador de cabelo`
   }
 ];
