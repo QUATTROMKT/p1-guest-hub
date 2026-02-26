@@ -179,16 +179,16 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
 
     // 4. Cria novo hóspede ou atualiza existente
     if (!matchedDoc) {
-      const newGuest = await guestsRef.add({
+      guestId = targetPhone;
+      await guestsRef.doc(guestId).set({
         name: guestName, phone: targetPhone, lid: lid,
         avatar: body.photo || `https://ui-avatars.com/api/?name=${guestName}&background=random`,
         status: "lead", tags: ["WhatsApp"], lastMessage: text,
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
         unreadCount: isFromHotel ? 0 : 1, isGroup: isGroup,
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
-      });
-      guestId = newGuest.id;
-      console.log("[Webhook] Novo hóspede criado:", guestId, guestName, targetPhone);
+      }, { merge: true });
+      console.log("[Webhook] Novo hóspede criado ou atualizado (concorrência):", guestId, guestName, targetPhone);
     } else {
       guestId = matchedDoc.id;
       const docData = matchedDoc.data();

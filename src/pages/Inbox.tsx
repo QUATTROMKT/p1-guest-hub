@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film, Shield } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film, Shield, Forward, ChevronRight } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead e services
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
@@ -39,6 +39,8 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const [showTemplates, setShowTemplates] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'media'>('details');
   const [editData, setEditData] = useState<Partial<Guest>>({});
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [forwardSearchTerm, setForwardSearchTerm] = useState('');
 
   const auth = getAuth();
   const agentName = getAgentName(auth.currentUser);
@@ -266,7 +268,28 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   };
   const handleSelectTemplate = (text: string) => { setNewMessage(text); setShowTemplates(false); };
 
+  const handleForwardMessage = async (targetGuest: Guest) => {
+    if (!forwardingMessage) return;
+    try {
+      await sendMessage(
+        targetGuest.id, targetGuest.phone,
+        forwardingMessage.text || '',
+        forwardingMessage.type,
+        forwardingMessage.mediaUrl || '',
+        agentName
+      );
+      alert(`Mensagem encaminhada para ${targetGuest.name}!`);
+    } catch (error) {
+      console.error("Erro ao encaminhar:", error);
+      alert("Erro ao encaminhar mensagem.");
+    } finally {
+      setForwardingMessage(null);
+      setForwardSearchTerm('');
+    }
+  };
+
   const filteredGuests = guests.filter(g => g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm));
+  const forwardFilteredGuests = guests.filter(g => g.name.toLowerCase().includes(forwardSearchTerm.toLowerCase()) || g.phone.includes(forwardSearchTerm));
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'reserva': return 'bg-blue-600 text-white border-blue-600';
@@ -374,7 +397,16 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-100/50 dark:bg-slate-900/20">
               {messages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
+                <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'} group relative`}>
+                  {msg.sender === 'agent' && (
+                    <button
+                      onClick={() => setForwardingMessage(msg)}
+                      className="absolute right-full mr-2 self-center p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all bg-white dark:bg-slate-800 shadow-sm"
+                      title="Encaminhar"
+                    >
+                      <Forward size={14} />
+                    </button>
+                  )}
                   <div className={`max-w-[70%] p-3 rounded-xl shadow-md text-sm ${msg.sender === 'agent'
                     ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
                     : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-600 rounded-tl-none'
@@ -418,6 +450,15 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                       <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-300'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
                     </div>
                   </div>
+                  {msg.sender === 'guest' && (
+                    <button
+                      onClick={() => setForwardingMessage(msg)}
+                      className="absolute left-full ml-2 self-center p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all bg-white dark:bg-slate-800 shadow-sm"
+                      title="Encaminhar"
+                    >
+                      <Forward size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
               <div ref={messagesEndRef} />
@@ -703,6 +744,63 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
           </div>
         )}
       </div>
-    </div>
+
+      {/* MODAL DE ENCAMINHAR */}
+      {
+        forwardingMessage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md shadow-2xl flex flex-col h-[500px]">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <Forward size={20} className="text-emerald-500" />
+                  Encaminhar Mensagem
+                </h3>
+                <button onClick={() => { setForwardingMessage(null); setForwardSearchTerm(''); }} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-4 border-b border-slate-100 dark:border-slate-700/50">
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Buscar contato para encaminhar..."
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-white text-sm"
+                    value={forwardSearchTerm}
+                    onChange={e => setForwardSearchTerm(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-2">
+                {forwardFilteredGuests.length > 0 ? (
+                  forwardFilteredGuests.map(g => (
+                    <button
+                      key={g.id}
+                      onClick={() => handleForwardMessage(g)}
+                      className="w-full p-3 flex items-center gap-3 hover:bg-emerald-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors text-left group"
+                    >
+                      <img src={g.avatar} className="w-10 h-10 rounded-full" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${g.name}&background=10b981&color=fff`)} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{g.name}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{g.phone}</p>
+                      </div>
+                      <ChevronRight size={18} className="text-slate-300 dark:text-slate-600 group-hover:text-emerald-500 transition-colors" />
+                    </button>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-8 text-slate-400 dark:text-slate-500">
+                    <User size={32} className="mb-2 opacity-50" />
+                    <p className="text-sm">Nenhum contato encontrado.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   );
 }

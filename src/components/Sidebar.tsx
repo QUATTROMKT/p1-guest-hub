@@ -1,6 +1,6 @@
 import { LayoutDashboard, MessageSquare, LogOut, Users, ClipboardList, Moon, Sun, BarChart3 } from 'lucide-react';
 import { getAuth, signOut } from 'firebase/auth';
-import { hasReportsAccess } from '../utils/authUtils';
+import { hasReportsAccess, getAgentName } from '../utils/authUtils';
 
 interface SidebarProps {
   activePage: string;
@@ -10,6 +10,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activePage, onNavigate, theme, onToggleTheme }: SidebarProps) {
+  const auth = getAuth();
+  const agentName = auth.currentUser ? getAgentName(auth.currentUser) : '';
+  const firstName = agentName.split(' ')[0];
+
   return (
     <aside className="w-20 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col items-center py-6 shadow-sm z-20 transition-colors duration-200">
       <div className="mb-8 p-2 bg-emerald-100 rounded-xl">
@@ -63,6 +67,13 @@ export function Sidebar({ activePage, onNavigate, theme, onToggleTheme }: Sideba
       </nav>
 
       <div className="mt-auto flex flex-col items-center gap-4 mb-4">
+        {firstName && (
+          <div className="flex flex-col items-center mb-2">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider truncate max-w-[60px] text-center" title={agentName}>
+              {firstName}
+            </span>
+          </div>
+        )}
         <button
           onClick={onToggleTheme}
           className="p-3 text-slate-400 hover:text-emerald-600 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
