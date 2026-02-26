@@ -9,6 +9,18 @@ db.settings({ ignoreUndefinedProperties: true });
 // Helpers globais
 const normalizePhone = (p: string): string => (p || "").replace(/\D/g, '').replace(/id$/i, '');
 
+const getDeterministicId = (phone: string): string => {
+  let p = (phone || "").replace(/\D/g, '');
+  if (!p) return "";
+  if (!p.startsWith("55") && p.length >= 10) {
+    p = "55" + p;
+  }
+  if (p.startsWith("55") && p.length === 13 && p[4] === '9') {
+    p = p.slice(0, 4) + p.slice(5);
+  }
+  return p;
+};
+
 const phonesMatch = (stored: string, incoming: string): boolean => {
   const a = normalizePhone(stored);
   const b = normalizePhone(incoming);
@@ -181,7 +193,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
 
     // 4. Cria novo hóspede ou atualiza existente
     if (!matchedDoc) {
-      guestId = targetPhone;
+      guestId = getDeterministicId(targetPhone) || targetPhone;
       await guestsRef.doc(guestId).set({
         name: guestName, phone: targetPhone, lid: lid,
         avatar: body.photo || `https://ui-avatars.com/api/?name=${guestName}&background=random`,

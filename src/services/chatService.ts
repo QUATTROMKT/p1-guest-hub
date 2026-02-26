@@ -122,20 +122,48 @@ export const sendMessage = async (
   }
 };
 
+const getDeterministicId = (phone: string): string => {
+  let p = (phone || "").replace(/\D/g, '');
+  if (!p) return "";
+  if (!p.startsWith("55") && p.length >= 10) {
+    p = "55" + p;
+  }
+  if (p.startsWith("55") && p.length === 13 && p[4] === '9') {
+    p = p.slice(0, 4) + p.slice(5);
+  }
+  return p;
+};
+
 export const createGuest = async (data: any) => {
   // Normaliza o telefone para apenas dígitos
+  const phone = data.phone ? data.phone.replace(/\D/g, '') : '';
   const normalizedData = {
     ...data,
-    phone: data.phone ? data.phone.replace(/\D/g, '') : '',
+    phone: phone,
   };
-  const docRef = await addDoc(collection(db, "guests"), {
-    ...normalizedData,
-    createdAt: serverTimestamp(),
-    lastMessageTime: serverTimestamp(),
-    unreadCount: 0,
-    status: 'lead' // default status
-  });
-  return docRef.id;
+
+  const deterministicId = getDeterministicId(phone);
+
+  if (deterministicId) {
+    const docRef = doc(db, "guests", deterministicId);
+    await setDoc(docRef, {
+      ...normalizedData,
+      createdAt: serverTimestamp(),
+      lastMessageTime: serverTimestamp(),
+      unreadCount: 0,
+      status: 'lead' // default status
+    }, { merge: true });
+    return deterministicId;
+  } else {
+    const docRef = await addDoc(collection(db, "guests"), {
+      ...normalizedData,
+      createdAt: serverTimestamp(),
+      lastMessageTime: serverTimestamp(),
+      unreadCount: 0,
+      status: 'lead' // default status
+    });
+    return docRef.id;
+  }
 };
 
 export const updateGuest = async (guestId: string, data: any) => {
