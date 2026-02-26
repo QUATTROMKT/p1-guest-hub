@@ -41,6 +41,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const [editData, setEditData] = useState<Partial<Guest>>({});
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [forwardSearchTerm, setForwardSearchTerm] = useState('');
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const auth = getAuth();
   const agentName = getAgentName(auth.currentUser);
@@ -412,8 +413,11 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                     : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-600 rounded-tl-none'
                     }`}>
                     {msg.type === 'image' && msg.mediaUrl && (
-                      <div className="mb-2 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-600">
-                        <img src={msg.mediaUrl} alt="Imagem" className="w-full h-auto object-cover" loading="lazy" />
+                      <div
+                        className="mb-2 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-600 cursor-pointer"
+                        onClick={() => setExpandedImage(msg.mediaUrl!)}
+                      >
+                        <img src={msg.mediaUrl} alt="Imagem" className="w-full h-auto object-cover hover:opacity-90 transition-opacity" loading="lazy" />
                       </div>
                     )}
                     {msg.type === 'audio' && msg.mediaUrl && (
@@ -711,9 +715,9 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                     {mediaMessages.map(msg => (
                       <div key={msg.id} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
                         {msg.type === 'image' && (
-                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer">
-                            <img src={msg.mediaUrl} className="w-full h-24 object-cover" />
-                          </a>
+                          <button onClick={() => setExpandedImage(msg.mediaUrl!)} className="block w-full h-full text-left">
+                            <img src={msg.mediaUrl} className="w-full h-24 object-cover hover:opacity-90 transition-opacity" />
+                          </button>
                         )}
                         {msg.type === 'video' && (
                           <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="block relative w-full h-24 bg-black">
@@ -801,6 +805,27 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
           </div>
         )
       }
+
+      {/* MODAL DE IMAGEM EXPANDIDA */}
+      {expandedImage && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <button
+            onClick={() => setExpandedImage(null)}
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-colors z-[70]"
+          >
+            <X size={24} />
+          </button>
+          <img
+            src={expandedImage}
+            alt="Imagem Expandida"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div >
   );
 }
