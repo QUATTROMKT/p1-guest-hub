@@ -58,30 +58,32 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     let messageType = "text";
     let text = "";
 
-    if (body.image) {
+    if (body.image || body.imageUrl || body.type === 'IMAGE') {
       messageType = "image";
-      mediaUrl = body.image.imageUrl || body.image.url || "";
-      text = body.image.caption || "📷 Imagem";
-    } else if (body.audio) {
+      mediaUrl = body.imageUrl || (body.image && (body.image.imageUrl || body.image.url)) || "";
+      text = body.caption || (body.image && body.image.caption) || "📷 Imagem";
+    } else if (body.audio || body.audioUrl || body.type === 'AUDIO') {
       messageType = "audio";
-      mediaUrl = body.audio.audioUrl || body.audio.url || "";
+      mediaUrl = body.audioUrl || (body.audio && (body.audio.audioUrl || body.audio.url)) || "";
       text = "🎤 Áudio";
-    } else if (body.video) {
+    } else if (body.video || body.videoUrl || body.type === 'VIDEO') {
       messageType = "video";
-      mediaUrl = body.video.videoUrl || body.video.url || "";
-      text = body.video.caption || "🎥 Vídeo";
-    } else if (body.document) {
+      mediaUrl = body.videoUrl || (body.video && (body.video.videoUrl || body.video.url)) || "";
+      text = body.caption || (body.video && body.video.caption) || "🎥 Vídeo";
+    } else if (body.document || body.documentUrl || body.type === 'DOCUMENT') {
       messageType = "document";
-      // Z-API pode mandar em diversos campos: documentUrl, url, document
-      mediaUrl = body.document.documentUrl || body.document.url || body.document.document || "";
-      text = body.document.fileName || body.document.title || "📄 Documento";
-      console.log("[Webhook] Document payload:", JSON.stringify(body.document));
-    } else if (body.sticker) {
+      // Z-API pode mandar a URL na raiz ou dentro do objeto document
+      mediaUrl = body.documentUrl || (body.document && (body.document.documentUrl || body.document.url || body.document.document)) || "";
+      text = body.fileName || (body.document && (body.document.fileName || body.document.title)) || "📄 Documento";
+      console.log("[Webhook] Document payload:", JSON.stringify({ document: body.document, documentUrl: body.documentUrl }));
+    } else if (body.sticker || body.type === 'STICKER') {
       messageType = "sticker";
       text = "💟 Figurinha";
-    } else if (body.location) {
+    } else if (body.location || body.type === 'LOCATION') {
       messageType = "location";
-      mediaUrl = `https://maps.google.com/?q=${body.location.latitude},${body.location.longitude}`;
+      const lat = body.location?.latitude || "";
+      const lng = body.location?.longitude || "";
+      mediaUrl = (lat && lng) ? `https://maps.google.com/?q=${lat},${lng}` : "";
       text = "📍 Localização";
     }
 
