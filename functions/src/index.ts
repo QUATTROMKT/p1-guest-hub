@@ -295,15 +295,31 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     // --- MENSAGEM AUTOMÁTICA DE BOAS-VINDAS NO WEBHOOK ---
     // Se for o HÓSPEDE (fromMe = false) e for UM NOVO CHAT OU primeira mensagem após longo período.
     // Podemos identificar novo chat por !matchedDoc
-    if (!isFromHotel && !matchedDoc) {
+    if (!isFromHotel && !matchedDoc && !isGroup) {
       try {
-        // NOTA: Para funcionar 100%, é melhor ter The Instance / Token aqui, mas como o app 
-        // diz 'o sistema que usa API', pode ser mais fácil deixar num trigger do frontend ou
-        // configurar env vars na Cloud Function via 'firebase functions:config:set'.
-        // Como essa function pode não ter o VITE_ env ainda, vamos apenas injetar localmente
-        // um webhook event back se configurado. Na versão da Web, P1 usa variáveis hardcoded?
-        console.log("[Webhook] Dispararia Boas Vindas Automáticas pois é um novo contato.");
-      } catch (e) { console.error("Auto reply fail", e); }
+        const ZAPI_INSTANCE = "3EDDA716EC1BF3F118711AC0A90830D6";
+        const ZAPI_TOKEN = "2CA5B27FD7E8EA7872F88116";
+        const ZAPI_CLIENT_TOKEN = "Fba70686a73f5409da3e0f33bfee5a190S";
+
+        const welcomeText = "P1 Hotel Reservas agradece seu contato.\nPara orçamento de reserva, por favor, informe a data desejada e a quantidade de pessoas por quarto, logo retornamos.";
+
+        const cleanPhone = targetPhone.replace(/\D/g, '');
+        const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`;
+
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Client-Token': ZAPI_CLIENT_TOKEN
+          },
+          body: JSON.stringify({ phone: cleanPhone, message: welcomeText })
+        }).then(res => res.json())
+          .then(data => console.log("[Webhook] Boas vindas enviadas com sucesso para", cleanPhone, data))
+          .catch(err => console.error("[Webhook] Erro requisição de boas vindas", err));
+
+      } catch (e) {
+        console.error("Auto reply fail", e);
+      }
     }
 
     res.status(200).send("OK");

@@ -303,6 +303,23 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     }
   };
 
+  const formatMessageTime = (timestamp: any) => {
+    if (!timestamp || !timestamp.seconds) return '';
+    const date = new Date(timestamp.seconds * 1000);
+    const now = new Date();
+    const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+    if (isToday) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.getDate() === yesterday.getDate() && date.getMonth() === yesterday.getMonth() && date.getFullYear() === yesterday.getFullYear();
+    if (isYesterday) {
+      return 'Ontem';
+    }
+    return date.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: '2-digit' });
+  };
+
   const filteredGuests = guests.filter(g => g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm));
 
   // Sort guests: Pinned first, then by lastMessageTime
@@ -383,7 +400,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                         <Pin className={guest.pinned ? "text-amber-500 fill-amber-500" : ""} size={14} />
                       </button>
                       <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                        {guest.lastMessageTime?.seconds ? new Date(guest.lastMessageTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        {formatMessageTime(guest.lastMessageTime)}
                       </span>
                     </div>
                   </div>
@@ -424,76 +441,111 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                   </p>
                 </div>
               </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={async () => {
+                    await updateDoc(doc(db, "guests", selectedGuest.id), { unreadCount: 1 });
+                    setSelectedGuest(null);
+                  }}
+                  className="px-3 py-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors flex items-center gap-1.5 uppercase tracking-wide border border-slate-200 dark:border-slate-600"
+                  title="Marcar como não lida"
+                >
+                  <MessageSquare size={14} /> Não Lida
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-100/50 dark:bg-slate-900/20">
-              {messages.map((msg) => (
-                <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'} group relative`}>
-                  {msg.sender === 'agent' && (
-                    <button
-                      onClick={() => setForwardingMessage(msg)}
-                      className="absolute right-full mr-2 self-center p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all bg-white dark:bg-slate-800 shadow-sm"
-                      title="Encaminhar"
-                    >
-                      <Forward size={14} />
-                    </button>
-                  )}
-                  <div className={`max-w-[70%] p-3 rounded-xl shadow-md text-sm ${msg.sender === 'agent'
-                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
-                    : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-600 rounded-tl-none'
-                    }`}>
-                    {msg.type === 'image' && msg.mediaUrl && (
-                      <div
-                        className="mb-2 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-600 cursor-pointer"
-                        onClick={() => setExpandedImage(msg.mediaUrl!)}
-                      >
-                        <img src={msg.mediaUrl} alt="Imagem" className="w-full h-auto object-cover hover:opacity-90 transition-opacity" loading="lazy" />
+              {messages.map((msg, index) => {
+                const msgDate = msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000) : new Date();
+                const dateString = msgDate.toLocaleDateString();
+                const prevMsg = index > 0 ? messages[index - 1] : null;
+                const prevDateString = prevMsg?.createdAt?.seconds ? new Date(prevMsg.createdAt.seconds * 1000).toLocaleDateString() : '';
+                const showDateSeparator = dateString !== prevDateString;
+
+                let separatorText = dateString;
+                const todayString = new Date().toLocaleDateString();
+                const yesterdayString = new Date(Date.now() - 86400000).toLocaleDateString();
+                if (dateString === todayString) separatorText = 'Hoje';
+                else if (dateString === yesterdayString) separatorText = 'Ontem';
+
+                return (
+                  <div key={msg.id} className="contents">
+                    {showDateSeparator && (
+                      <div className="flex justify-center my-6">
+                        <span className="bg-slate-200/70 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 text-[10px] uppercase px-3 py-1 rounded-full font-bold">
+                          {separatorText}
+                        </span>
                       </div>
                     )}
-                    {msg.type === 'audio' && msg.mediaUrl && (
-                      <div className="mb-2 flex items-center justify-center bg-slate-100 dark:bg-slate-600 rounded-lg p-2 min-w-[200px]">
-                        <audio controls src={msg.mediaUrl} className="w-full h-8" />
-                      </div>
-                    )}
-                    {msg.type === 'video' && msg.mediaUrl && (
-                      <div className="mb-2 rounded-lg overflow-hidden bg-black">
-                        <video controls src={msg.mediaUrl} className="w-full max-h-60" />
-                      </div>
-                    )}
-                    {msg.type === 'document' && msg.mediaUrl && (
-                      <div className="mb-2 p-3 bg-slate-50 dark:bg-slate-600 border border-slate-200 dark:border-slate-500 rounded-lg flex items-center gap-3">
-                        <div className="bg-red-100 p-2 rounded text-red-500"><FileText size={24} /></div>
-                        <div className="flex-1 overflow-hidden">
-                          <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{msg.text || 'Documento'}</p>
-                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Baixar Arquivo</a>
+                    <div className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'} group relative`}>
+                      {msg.sender === 'agent' && (
+                        <button
+                          onClick={() => setForwardingMessage(msg)}
+                          className="absolute right-full mr-2 self-center p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all bg-white dark:bg-slate-800 shadow-sm"
+                          title="Encaminhar"
+                        >
+                          <Forward size={14} />
+                        </button>
+                      )}
+                      <div className={`max-w-[70%] p-3 rounded-xl shadow-md text-sm ${msg.sender === 'agent'
+                        ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
+                        : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-600 rounded-tl-none'
+                        }`}>
+                        {msg.type === 'image' && msg.mediaUrl && (
+                          <div
+                            className="mb-2 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-600 cursor-pointer"
+                            onClick={() => setExpandedImage(msg.mediaUrl!)}
+                          >
+                            <img src={msg.mediaUrl} alt="Imagem" className="w-full h-auto object-cover hover:opacity-90 transition-opacity" loading="lazy" />
+                          </div>
+                        )}
+                        {msg.type === 'audio' && msg.mediaUrl && (
+                          <div className="mb-2 flex items-center justify-center bg-slate-100 dark:bg-slate-600 rounded-lg p-2 min-w-[200px]">
+                            <audio controls src={msg.mediaUrl} className="w-full h-8" />
+                          </div>
+                        )}
+                        {msg.type === 'video' && msg.mediaUrl && (
+                          <div className="mb-2 rounded-lg overflow-hidden bg-black">
+                            <video controls src={msg.mediaUrl} className="w-full max-h-60" />
+                          </div>
+                        )}
+                        {msg.type === 'document' && msg.mediaUrl && (
+                          <div className="mb-2 p-3 bg-slate-50 dark:bg-slate-600 border border-slate-200 dark:border-slate-500 rounded-lg flex items-center gap-3">
+                            <div className="bg-red-100 p-2 rounded text-red-500"><FileText size={24} /></div>
+                            <div className="flex-1 overflow-hidden">
+                              <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{msg.text || 'Documento'}</p>
+                              <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Baixar Arquivo</a>
+                            </div>
+                          </div>
+                        )}
+                        {msg.type === 'location' && msg.mediaUrl && (
+                          <div className="mb-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
+                            <div className="bg-slate-100 dark:bg-slate-600 p-8 flex justify-center items-center text-slate-400"><MapPin size={32} /></div>
+                            <div className="p-2 bg-white dark:bg-slate-700">
+                              <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"><MapPin size={12} /> Ver no Google Maps</a>
+                            </div>
+                          </div>
+                        )}
+                        <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.text || ''}</p>
+                        <div className="flex justify-between items-end mt-1 gap-2">
+                          {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantName || (msg.participantPhone ? `+${msg.participantPhone.slice(-8, -4)}-${msg.participantPhone.slice(-4)}` : 'Membro')}</span>}
+                          {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
+                          <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-300'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
                         </div>
                       </div>
-                    )}
-                    {msg.type === 'location' && msg.mediaUrl && (
-                      <div className="mb-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
-                        <div className="bg-slate-100 dark:bg-slate-600 p-8 flex justify-center items-center text-slate-400"><MapPin size={32} /></div>
-                        <div className="p-2 bg-white dark:bg-slate-700">
-                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"><MapPin size={12} /> Ver no Google Maps</a>
-                        </div>
-                      </div>
-                    )}
-                    <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.text || ''}</p>
-                    <div className="flex justify-between items-end mt-1 gap-2">
-                      {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantName || (msg.participantPhone ? `+${msg.participantPhone.slice(-8, -4)}-${msg.participantPhone.slice(-4)}` : 'Membro')}</span>}
-                      {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
-                      <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-300'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
+                      {msg.sender === 'guest' && (
+                        <button
+                          onClick={() => setForwardingMessage(msg)}
+                          className="absolute left-full ml-2 self-center p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all bg-white dark:bg-slate-800 shadow-sm"
+                          title="Encaminhar"
+                        >
+                          <Forward size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  {msg.sender === 'guest' && (
-                    <button
-                      onClick={() => setForwardingMessage(msg)}
-                      className="absolute left-full ml-2 self-center p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all bg-white dark:bg-slate-800 shadow-sm"
-                      title="Encaminhar"
-                    >
-                      <Forward size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
             {/* INPUT AREA */}
