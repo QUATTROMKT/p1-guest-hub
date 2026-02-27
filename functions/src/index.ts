@@ -56,11 +56,9 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       }
     }
 
-    // --- REGRA DE BLOQUEIO: mensagens enviadas pela API do sistema são ignoradas ---
-    if (body.fromMe && body.fromApi) {
-      res.status(200).send("Ignored (From API/System)");
-      return;
-    }
+    // We removed the 'fromApi' check that blocked messages sent from P1 Guest Hub or other API integrations.
+    // This solves the issue where API messages don't appear in P1 Guest Hub.
+    // Note: Deduplication below catches P1's own echoes.
 
     const isFromHotel = body.fromMe === true;
     const senderType = isFromHotel ? "agent" : "guest";
@@ -241,8 +239,22 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         const threeMinutesAgo = Date.now() - 180000;
         const ecoMsg = recentAgentMsgs.docs.find(d => {
           const data = d.data();
-          if (!data.localDocId || data.zapiId) return false;
-          if (data.text !== text) return false;
+
+          // Relaxando restrições rigorosas de 'localDocId' já que API calls podem não ter.
+          // Previnimos sobrescrever se O MESMO zapiMessageId já foi processado
+          if (data.zapiId === zapiMessageId) return true; // Se o ID é igual, é o mesmo, dedup nele (atualiza apenas)
+          if (data.zapiId && data.zapiId !== zapiMessageId) return false; // Se já tem ID ZAPI e é diferente, então é outra doc
+
+          // Se chegou aqui, é provável que seja um doc de placeholder (sem zapiId)
+          if (messageType === 'text') {
+            // Remove espaços extras para evitar falhas de match bobas
+            const cleanSource = (data.text || "").trim();
+            const cleanTarget = (text || "").trim();
+            if (cleanSource !== cleanTarget) return false;
+          } else {
+            if (data.type !== messageType) return false;
+          }
+
           // Verifica se é recente (sem usar filtro composto)
           const msgTime = data.createdAt?.toMillis?.() || 0;
           return msgTime > threeMinutesAgo || msgTime === 0; // 0 = serverTimestamp pendente
@@ -250,7 +262,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
 
         if (ecoMsg) {
           await ecoMsg.ref.update({ zapiId: zapiMessageId, status: "delivered" });
-          console.log("[Webhook] Eco detectado! zapiId atualizado:", zapiMessageId);
+          console.log("[Webhook] Eco detectado! zapiId atualizado ou ignorado duplicata:", zapiMessageId);
           res.status(200).send("OK (Echo Deduplicated)");
           return;
         }
@@ -277,6 +289,21 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     }, { merge: true });
 
     console.log("[Webhook] Mensagem salva:", docId, "| tipo:", messageType, "| mediaUrl:", mediaUrl ? "SIM" : "NÃO");
+
+    // --- MENSAGEM AUTOMÁTICA DE BOAS-VINDAS NO WEBHOOK ---
+    // Se for o HÓSPEDE (fromMe = false) e for UM NOVO CHAT OU primeira mensagem após longo período.
+    // Podemos identificar novo chat por !matchedDoc
+    if (!isFromHotel && !matchedDoc) {
+      try {
+        // NOTA: Para funcionar 100%, é melhor ter The Instance / Token aqui, mas como o app 
+        // diz 'o sistema que usa API', pode ser mais fácil deixar num trigger do frontend ou
+        // configurar env vars na Cloud Function via 'firebase functions:config:set'.
+        // Como essa function pode não ter o VITE_ env ainda, vamos apenas injetar localmente
+        // um webhook event back se configurado. Na versão da Web, P1 usa variáveis hardcoded?
+        console.log("[Webhook] Dispararia Boas Vindas Automáticas pois é um novo contato.");
+      } catch (e) { console.error("Auto reply fail", e); }
+    }
+
     res.status(200).send("OK");
 
   } catch (error) {

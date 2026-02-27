@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film, Shield, Forward, ChevronRight } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film, Shield, Forward, ChevronRight, Pin } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead e services
 import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
@@ -22,6 +22,7 @@ interface Guest {
   status: string; tags: string[]; notes?: string; lastMessage?: string; lastMessageTime?: any;
   unreadCount?: number;
   isGroup?: boolean;
+  pinned?: boolean;
   cpf?: string; email?: string; checkinDate?: string; checkoutDate?: string;
   createdBy?: string; lastUpdatedBy?: string;
 }
@@ -120,13 +121,26 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     }
   }, [selectedGuestId]);
 
-  // --- NOVA FUNÇÃO DE SELECIONAR HÓSPEDE ---
   const handleSelectGuest = async (guest: Guest) => {
     setSelectedGuest(guest);
     // Se tiver mensagens não lidas, marca como lida e zera no banco
     if (guest.unreadCount && guest.unreadCount > 0) {
       await markAsRead(guest.id);
     }
+  };
+
+  const handleTogglePin = async (e: React.MouseEvent, guest: Guest) => {
+    e.stopPropagation();
+    const newPinnedStatus = !guest.pinned;
+
+    // Otimista (UX instantânea)
+    setGuests(prev => prev.map(g => g.id === guest.id ? { ...g, pinned: newPinnedStatus } : g));
+    if (selectedGuest?.id === guest.id) {
+      setSelectedGuest({ ...selectedGuest, pinned: newPinnedStatus });
+    }
+
+    // Salva no banco
+    await updateGuest(guest.id, { pinned: newPinnedStatus });
   };
 
   const handleSendMessage = async () => {
@@ -290,6 +304,16 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   };
 
   const filteredGuests = guests.filter(g => g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm));
+
+  // Sort guests: Pinned first, then by lastMessageTime
+  const sortedGuests = [...filteredGuests].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    const timeA = a.lastMessageTime?.seconds || 0;
+    const timeB = b.lastMessageTime?.seconds || 0;
+    return timeB - timeA;
+  });
+
   const forwardFilteredGuests = guests.filter(g => g.name.toLowerCase().includes(forwardSearchTerm.toLowerCase()) || g.phone.includes(forwardSearchTerm));
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -331,7 +355,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {filteredGuests.map(guest => (
+          {sortedGuests.map(guest => (
             <div
               key={guest.id}
               onClick={() => handleSelectGuest(guest)}
@@ -354,9 +378,14 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                       {guest.name}
                       {(guest.tags?.includes('Funcionário') || guest.status === 'internal') && <Shield size={12} className="text-purple-600 fill-purple-100" />}
                     </h3>
-                    <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                      {guest.lastMessageTime?.seconds ? new Date(guest.lastMessageTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={(e) => handleTogglePin(e, guest)} className="text-slate-400 hover:text-amber-500 transition-colors">
+                        <Pin className={guest.pinned ? "text-amber-500 fill-amber-500" : ""} size={14} />
+                      </button>
+                      <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                        {guest.lastMessageTime?.seconds ? new Date(guest.lastMessageTime.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </span>
+                    </div>
                   </div>
                   <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{guest.lastMessage}</p>
                 </div>
