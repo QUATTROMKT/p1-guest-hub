@@ -444,7 +444,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
               <div className="flex items-center gap-3">
                 <button
                   onClick={async () => {
-                    await updateDoc(doc(db, "guests", selectedGuest.id), { unreadCount: 1 });
+                    await updateGuest(selectedGuest.id, { unreadCount: 1 });
                     setSelectedGuest(null);
                   }}
                   className="px-3 py-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors flex items-center gap-1.5 uppercase tracking-wide border border-slate-200 dark:border-slate-600"
