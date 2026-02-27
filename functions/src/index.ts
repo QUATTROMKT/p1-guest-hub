@@ -230,15 +230,17 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     // Busca SÓ por sender=agent (filtro simples, sem índice composto) e compara em memória
     if (isFromHotel && zapiMessageId) {
       try {
-        const recentAgentMsgs = await messagesRef
-          .where("sender", "==", "agent")
+        // Removido o where("sender", "==", "agent") para evitar erro de falta de índice composto no Firestore
+        // que causava falha silenciosa no catch e salvava a mensagem duplicada. Filtramos em memória.
+        const recentMsgs = await messagesRef
           .orderBy("createdAt", "desc")
-          .limit(15)
+          .limit(20)
           .get();
 
         const threeMinutesAgo = Date.now() - 180000;
-        const ecoMsg = recentAgentMsgs.docs.find(d => {
+        const ecoMsg = recentMsgs.docs.find(d => {
           const data = d.data();
+          if (data.sender !== "agent") return false;
 
           // Relaxando restrições rigorosas de 'localDocId' já que API calls podem não ter.
           // Previnimos sobrescrever se O MESMO zapiMessageId já foi processado
