@@ -490,7 +490,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
       </div>
 
       {/* ÁREA DE CHAT - CONTEÚDO */}
-      <div className="flex-1 min-w-0 flex flex-col bg-slate-50 dark:bg-slate-900/50 transition-colors duration-200 relative">
+      <div className="flex-1 min-w-0 flex flex-col bg-slate-50 dark:bg-slate-900/50 transition-colors duration-200 relative overflow-hidden">
         {!selectedGuest ? (
           <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500 flex-col gap-4">
             <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center">
@@ -555,7 +555,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                         </span>
                       </div>
                     )}
-                    <div className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'} relative group`}>
+                    <div className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'} relative group max-w-full`}>
 
                       {/* Botões do lado de FORA esquerdo (se HÓSPEDE mandou pra gente) */}
                       {msg.sender === 'guest' && (
@@ -630,7 +630,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                         )}
 
                         <div className="flex justify-between items-end mt-1 gap-2">
-                          {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantName || (msg.participantPhone ? `+${msg.participantPhone.slice(-8, -4)}-${msg.participantPhone.slice(-4)}` : 'Membro')}</span>}
+                          {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80 truncate max-w-[120px]">{msg.participantName || (msg.participantPhone ? `+${msg.participantPhone.slice(-8, -4)}-${msg.participantPhone.slice(-4)}` : 'Membro')}</span>}
                           {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
                           <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-300'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
                         </div>
