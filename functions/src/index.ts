@@ -1,6 +1,7 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 
 admin.initializeApp();
 const db = getFirestore("p1hotel");
@@ -46,9 +47,8 @@ const phonesMatch = (stored: string, incoming: string): boolean => {
 export const zapiWebhook = functions.https.onRequest(async (req, res) => {
   try {
     const body = req.body;
-    console.log("[Webhook] Full Body:", JSON.stringify(body, null, 2));
+    console.log("[Webhook Fast Receiver] Body received. Generating event ID.");
 
-    // --- REGRA DE BLOQUEIO DE STATUS E NOTIFICAÇÕES ---
     if (body.status || body.connectedPhone) {
       if (!body.text && !body.image && !body.audio && !body.video && !body.document) {
         res.status(200).send("Ignored (Status Update)");
@@ -56,14 +56,45 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       }
     }
 
-    // We removed the 'fromApi' check that blocked messages sent from P1 Guest Hub or other API integrations.
-    // This solves the issue where API messages don't appear in P1 Guest Hub.
-    // Note: Deduplication below catches P1's own echoes.
+    const messageId = body.messageId || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    await db.collection("webhook_events").doc(messageId).set({
+      payload: body,
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: "pending"
+    }, { merge: true });
+
+    console.log(`[Webhook Fast Receiver] Event ${messageId} queued successfully.`);
+    res.status(200).send("OK Webhook Queued");
+  } catch (error) {
+    console.error("[Webhook Fast Receiver] Error:", error);
+    res.status(500).send("Error Queueing Webhook");
+  }
+});
+
+export const processZapiWebhook = onDocumentCreated({
+  document: "webhook_events/{eventId}",
+  database: "p1hotel"
+}, async (event) => {
+  try {
+    const snap = event.data;
+    if (!snap) return;
+
+    const eventId = event.params.eventId;
+    const data = snap.data();
+    const body = data.payload;
+
+    console.log(`[Webhook Processor] Processing event ${eventId}`);
+
+    if (body.status || body.connectedPhone) {
+      if (!body.text && !body.image && !body.audio && !body.video && !body.document) {
+        return;
+      }
+    }
 
     const isFromHotel = body.fromMe === true;
     const senderType = isFromHotel ? "agent" : "guest";
 
-    // --- EXTRAIR MÍDIA E TEXTO ---
     let mediaUrl = "";
     let messageType = "text";
     let text = "";
@@ -82,10 +113,8 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       text = body.caption || (body.video && body.video.caption) || "🎥 Vídeo";
     } else if (body.document || body.documentUrl || body.type === 'DOCUMENT') {
       messageType = "document";
-      // Z-API pode mandar a URL na raiz ou dentro do objeto document
       mediaUrl = body.documentUrl || (body.document && (body.document.documentUrl || body.document.url || body.document.document)) || "";
       text = body.fileName || (body.document && (body.document.fileName || body.document.title)) || "📄 Documento";
-      console.log("[Webhook] Document payload:", JSON.stringify({ document: body.document, documentUrl: body.documentUrl }));
     } else if (body.sticker || body.type === 'STICKER') {
       messageType = "sticker";
       text = "💟 Figurinha";
@@ -97,7 +126,6 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       text = "📍 Localização";
     }
 
-    // Se ainda não temos texto, tenta extrair do padrão de texto
     if (!text || (messageType === 'text' && !text)) {
       if (body.text && body.text.message) text = body.text.message;
       else if (typeof body.text === 'string') text = body.text;
@@ -108,12 +136,10 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       if (!text) text = "Mensagem Recebida";
     }
 
-    // --- IDENTIFICAR O HÓSPEDE (OU GRUPO) ---
     const isGroup = body.isGroup === true;
     let targetPhone = "";
     let participantPhone = normalizePhone(body.participantPhone || "");
     if (!participantPhone) participantPhone = "Desconhecido";
-    // Nome do participante em grupos (vem do senderName do Z-API)
     const participantName = isGroup ? (body.senderName || "") : "";
 
     const rawLid = body.chatLid || body.participantLid || (body.phone && body.phone.includes("@lid") ? body.phone : "") || "";
@@ -134,20 +160,15 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       targetPhone = normalizePhone(rawPhone.split('@')[0]);
     }
 
-    console.log("[Webhook] targetPhone:", targetPhone, "| LID:", lid, "| fromMe:", body.fromMe, "| fromApi:", body.fromApi, "| senderType:", senderType);
-
     if (targetPhone.length < 5) {
-      console.log("[Webhook] Ignored - phone too short:", targetPhone);
-      res.status(200).send("Ignored (No Phone)");
+      console.log("[Webhook Processor] Ignored - phone too short:", targetPhone);
       return;
     }
 
-    // --- BUSCAR HÓSPEDE NO BANCO ---
     const guestsRef = db.collection("guests");
     let guestId = "";
     let matchedDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
-    // 1. Busca por telefone exato e variantes
     const phoneVariants: string[] = [targetPhone];
     if (targetPhone.startsWith("55") && targetPhone.length > 10) phoneVariants.push(targetPhone.substring(2));
     if (!targetPhone.startsWith("55")) phoneVariants.push("55" + targetPhone);
@@ -157,7 +178,6 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       if (!snap.empty) { matchedDoc = snap.docs[0]; break; }
     }
 
-    // 2. Se não achou ou achou um "ruim", busca por LID
     const matchedIsBad = matchedDoc && (matchedDoc.data().phone.length > 14 || !matchedDoc.data().phone.startsWith("55"));
     if ((!matchedDoc || matchedIsBad) && lid.length > 5) {
       const snapLid = await guestsRef.where("lid", "==", lid).get();
@@ -169,27 +189,8 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       else if (!matchedDoc && snapLid.docs.length > 0) matchedDoc = snapLid.docs[0];
     }
 
-    // 3. Busca completa por phonesMatch + LID
-    if (!matchedDoc) {
-      const allGuests = await guestsRef.get();
-      for (const docSnap of allGuests.docs) {
-        const dPhone = docSnap.data().phone || "";
-        const dLid = docSnap.data().lid || "";
-        if (phonesMatch(dPhone, targetPhone) || (lid && lid.length > 5 && lid === dLid)) {
-          matchedDoc = docSnap;
-          // Corrige o telefone armazenado se o novo for melhor
-          if (phonesMatch(dPhone, targetPhone) && dPhone !== targetPhone) {
-            const incomingIsValid = targetPhone.startsWith("55") && targetPhone.length >= 10 && targetPhone.length <= 13;
-            if (incomingIsValid) {
-              await guestsRef.doc(docSnap.id).update({ phone: targetPhone });
-            }
-          }
-          break;
-        }
-      }
-    }
+    // REMOVIDA BUSCA MASSIVA DO BANCO (`await guestsRef.get()`) AQUÍ.
 
-    // 4. Cria novo hóspede ou atualiza existente
     if (!matchedDoc) {
       guestId = getDeterministicId(targetPhone) || targetPhone;
       await guestsRef.doc(guestId).set({
@@ -200,7 +201,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         unreadCount: isFromHotel ? 0 : 1, isGroup: isGroup,
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
       }, { merge: true });
-      console.log("[Webhook] Novo hóspede criado ou atualizado (concorrência):", guestId, guestName, targetPhone);
+      console.log(`[Webhook Processor] Novo hóspede criado ou atualizado: ${guestId}`);
     } else {
       guestId = matchedDoc.id;
       const docData = matchedDoc.data();
@@ -209,7 +210,6 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
       };
       if (lid && !docData.lid) updateData.lid = lid;
-      // Atualiza nome se o atual for genérico
       if (guestName !== "Hóspede (WhatsApp)" && (docData.name === "Hóspede (WhatsApp)" || !docData.name)) {
         updateData.name = guestName;
       }
@@ -219,62 +219,42 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       if (incomingIsValid && (storedIsLidOrBad || !storedPhone)) updateData.phone = targetPhone;
       if (!isFromHotel) updateData.unreadCount = admin.firestore.FieldValue.increment(1);
       await guestsRef.doc(guestId).update(updateData);
-      console.log("[Webhook] Hóspede encontrado:", guestId, docData.name, "| matchedPhone:", storedPhone);
     }
 
-    // --- SALVAR MENSAGEM COM DEDUPLICAÇÃO ---
     const messagesRef = db.collection("guests").doc(guestId).collection("messages");
     const zapiMessageId = body.messageId;
 
-    // Deduplicação para ecos do sistema (quando fromMe=true):
-    // Busca SÓ por sender=agent (filtro simples, sem índice composto) e compara em memória
     if (isFromHotel && zapiMessageId) {
       try {
-        // Removido o where("sender", "==", "agent") para evitar erro de falta de índice composto no Firestore
-        // que causava falha silenciosa no catch e salvava a mensagem duplicada. Filtramos em memória.
-        const recentMsgs = await messagesRef
-          .orderBy("createdAt", "desc")
-          .limit(20)
-          .get();
-
+        const recentMsgs = await messagesRef.orderBy("createdAt", "desc").limit(20).get();
         const threeMinutesAgo = Date.now() - 180000;
         const ecoMsg = recentMsgs.docs.find(d => {
-          const data = d.data();
-          if (data.sender !== "agent") return false;
-
-          // Relaxando restrições rigorosas de 'localDocId' já que API calls podem não ter.
-          // Previnimos sobrescrever se O MESMO zapiMessageId já foi processado
-          if (data.zapiId === zapiMessageId) return true; // Se o ID é igual, é o mesmo, dedup nele (atualiza apenas)
-          if (data.zapiId && data.zapiId !== zapiMessageId) return false; // Se já tem ID ZAPI e é diferente, então é outra doc
-
-          // Se chegou aqui, é provável que seja um doc de placeholder (sem zapiId)
+          const mData = d.data();
+          if (mData.sender !== "agent") return false;
+          if (mData.zapiId === zapiMessageId) return true;
+          if (mData.zapiId && mData.zapiId !== zapiMessageId) return false;
           if (messageType === 'text') {
-            // Remove espaços extras para evitar falhas de match bobas
-            const cleanSource = (data.text || "").trim();
+            const cleanSource = (mData.text || "").trim();
             const cleanTarget = (text || "").trim();
             if (cleanSource !== cleanTarget) return false;
           } else {
-            if (data.type !== messageType) return false;
+            if (mData.type !== messageType) return false;
           }
-
-          // Verifica se é recente (sem usar filtro composto)
-          const msgTime = data.createdAt?.toMillis?.() || 0;
-          return msgTime > threeMinutesAgo || msgTime === 0; // 0 = serverTimestamp pendente
+          const msgTime = mData.createdAt?.toMillis?.() || 0;
+          return msgTime > threeMinutesAgo || msgTime === 0;
         });
 
         if (ecoMsg) {
           await ecoMsg.ref.update({ zapiId: zapiMessageId, status: "delivered" });
-          console.log("[Webhook] Eco detectado! zapiId atualizado ou ignorado duplicata:", zapiMessageId);
-          res.status(200).send("OK (Echo Deduplicated)");
+          console.log(`[Webhook Processor] Eco detectado! zapiId atualizado: ${zapiMessageId}`);
+          await snap.ref.update({ status: "processed", processedAt: admin.firestore.FieldValue.serverTimestamp() });
           return;
         }
       } catch (dedupeError) {
-        // Se a query de deduplicação falhar (ex: índice), continua e salva normalmente
-        console.warn("[Webhook] Deduplicação falhou, salvando normalmente:", dedupeError);
+        console.warn("[Webhook Processor] Deduplicação falhou, salvando normalmente:", dedupeError);
       }
     }
 
-    // Salva a mensagem normalmente
     const docId = zapiMessageId || `internal_${Date.now()}`;
     await messagesRef.doc(docId).set({
       text: text,
@@ -290,11 +270,6 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
       zapiId: zapiMessageId || null
     }, { merge: true });
 
-    console.log("[Webhook] Mensagem salva:", docId, "| tipo:", messageType, "| mediaUrl:", mediaUrl ? "SIM" : "NÃO");
-
-    // --- MENSAGEM AUTOMÁTICA DE BOAS-VINDAS NO WEBHOOK ---
-    // Se for o HÓSPEDE (fromMe = false) e for UM NOVO CHAT OU primeira mensagem após longo período.
-    // Podemos identificar novo chat por !matchedDoc
     if (!isFromHotel && !matchedDoc && !isGroup) {
       try {
         const ZAPI_INSTANCE = "3EDDA716EC1BF3F118711AC0A90830D6";
@@ -302,31 +277,27 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
         const ZAPI_CLIENT_TOKEN = "Fba70686a73f5409da3e0f33bfee5a190S";
 
         const welcomeText = "P1 Hotel Reservas agradece seu contato.\nPara orçamento de reserva, por favor, informe a data desejada e a quantidade de pessoas por quarto, logo retornamos.";
-
         const cleanPhone = targetPhone.replace(/\D/g, '');
         const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`;
 
         fetch(url, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Client-Token': ZAPI_CLIENT_TOKEN
-          },
+          headers: { 'Content-Type': 'application/json', 'Client-Token': ZAPI_CLIENT_TOKEN },
           body: JSON.stringify({ phone: cleanPhone, message: welcomeText })
-        }).then(res => res.json())
-          .then(data => console.log("[Webhook] Boas vindas enviadas com sucesso para", cleanPhone, data))
-          .catch(err => console.error("[Webhook] Erro requisição de boas vindas", err));
-
+        }).catch(err => console.error("[Webhook Processor] Erro auto-reply", err));
       } catch (e) {
         console.error("Auto reply fail", e);
       }
     }
 
-    res.status(200).send("OK");
+    await snap.ref.update({ status: "processed", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+    console.log(`[Webhook Processor] Event ${eventId} processed successfully.`);
 
   } catch (error) {
-    console.error("Erro Fatal:", error);
-    res.status(200).send("Error Handled");
+    console.error(`[Webhook Processor] Fatal Error processing event ${event.params.eventId}:`, error);
+    if (event.data) {
+      await event.data.ref.update({ status: "error", error: String(error) });
+    }
   }
 });
 
