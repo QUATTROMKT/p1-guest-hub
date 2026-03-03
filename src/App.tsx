@@ -86,7 +86,7 @@ function App() {
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 overflow-hidden font-sans transition-colors duration-200">
       <Sidebar activePage={currentPage} onNavigate={handleNavigate} theme={theme} onToggleTheme={toggleTheme} />
 
-      <main className="flex-1 h-full relative">
+      <main className="flex-1 min-w-0 h-full relative overflow-hidden">
         {currentPage === 'dashboard' && (
           <Dashboard />
         )}
