@@ -661,30 +661,26 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
             </div>
             {/* MODAL DE MEDIA PREVIEW PENDENTE */}
             {pendingMedia && (
-              <div className="absolute inset-x-0 bottom-[h-full] z-20 m-4 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-bottom-4">
-                <div className="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-700 pb-2">
-                  <h3 className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2"><ImageIcon size={16} /> Pré-visualizar Mídia</h3>
+              <div className="absolute inset-x-4 bottom-20 z-20 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-bold text-sm text-slate-700 dark:text-slate-200 flex items-center gap-2"><ImageIcon size={14} /> Pré-visualizar</h3>
                   <button onClick={handleCancelMedia} className="text-slate-400 hover:text-red-500 rounded p-1"><X size={18} /></button>
                 </div>
-                <div className="flex gap-4">
-                  <div className="w-32 h-32 bg-slate-100 dark:bg-slate-900 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {pendingMedia.type === 'image' && <img src={pendingMedia.url} className="w-full h-full object-cover" />}
-                    {pendingMedia.type === 'video' && <video src={pendingMedia.url} className="max-w-full max-h-full" />}
-                  </div>
-                  <div className="flex-1 flex flex-col justify-end">
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Adicionar uma legenda (opcional)</p>
-                    <div className="flex items-end gap-2 text-slate-800">
-                      <textarea
-                        className="flex-1 p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 dark:text-white resize-none outline-emerald-500"
-                        rows={2}
-                        placeholder="..."
-                        value={mediaCaption}
-                        autoFocus
-                        onChange={(e) => setMediaCaption(e.target.value)}
-                      />
-                      <button onClick={handleConfirmMediaSend} className="p-3 rounded-lg bg-emerald-600 text-white shrink-0 shadow hover:bg-emerald-700 active:scale-95 transition-all"><Send size={18} /></button>
-                    </div>
-                  </div>
+                <div className="w-full h-64 bg-slate-100 dark:bg-slate-900 rounded-lg overflow-hidden mb-3 flex items-center justify-center">
+                  {pendingMedia.type === 'image' && <img src={pendingMedia.url} className="max-w-full max-h-full object-contain" />}
+                  {pendingMedia.type === 'video' && <video src={pendingMedia.url} controls className="max-w-full max-h-full" />}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    className="flex-1 p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 dark:text-white text-sm outline-emerald-500"
+                    placeholder="Legenda (opcional)..."
+                    value={mediaCaption}
+                    autoFocus
+                    onChange={(e) => setMediaCaption(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleConfirmMediaSend()}
+                  />
+                  <button onClick={handleConfirmMediaSend} className="p-2.5 rounded-lg bg-emerald-600 text-white shrink-0 shadow hover:bg-emerald-700 active:scale-95 transition-all"><Send size={18} /></button>
                 </div>
               </div>
             )}
