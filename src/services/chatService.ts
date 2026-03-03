@@ -22,7 +22,7 @@ const ZAPI_TOKEN = import.meta.env.VITE_ZAPI_TOKEN;
 const ZAPI_CLIENT_TOKEN = import.meta.env.VITE_ZAPI_CLIENT_TOKEN;
 
 export const subscribeToGuests = (cb: (data: any[]) => void) => {
-  const q = query(collection(db, "guests"), orderBy("lastMessageTime", "desc"), limit(50));
+  const q = query(collection(db, "guests"), orderBy("lastMessageTime", "desc"), limit(500));
   return onSnapshot(q, (snap) => {
     const guests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     cb(guests);
