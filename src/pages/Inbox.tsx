@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film, Shield, Forward, ChevronRight, Pin } from 'lucide-react';
+import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film, Shield, Forward, ChevronRight, Pin, Edit2, Check } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead e services
-import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask } from '../services/chatService';
+import { subscribeToGuests, subscribeToMessages, sendMessage, updateGuest, deleteGuest, markAsRead, uploadFile, createTask, revokeMessage, editMessage as updateMessageZapi } from '../services/chatService';
 import { checkAndTriggerAutomation } from '../services/automationService';
 import { messageTemplates } from '../data/templates';
 import { getAgentName } from '../utils/authUtils';
@@ -16,6 +16,8 @@ interface Message {
   isGroup?: boolean;
   participantPhone?: string;
   participantName?: string;
+  edited?: boolean;
+  zapiId?: string;
 }
 interface Guest {
   id: string; name: string; phone: string; avatar: string;
@@ -43,6 +45,14 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [forwardSearchTerm, setForwardSearchTerm] = useState('');
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+
+  // States para Preview de Mídia antes de Enviar
+  const [pendingMedia, setPendingMedia] = useState<{ file: File, url: string, type: 'image' | 'video' | 'audio' | 'document' } | null>(null);
+  const [mediaCaption, setMediaCaption] = useState('');
+
+  // States para edição inline
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
 
   const auth = getAuth();
   const agentName = getAgentName(auth.currentUser);
@@ -165,18 +175,57 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     const file = e.target.files[0];
 
     // Determinar tipo
-    let type = 'document';
+    let type: 'image' | 'video' | 'audio' | 'document' = 'document';
     if (file.type.startsWith('image/')) type = 'image';
     else if (file.type.startsWith('audio/')) type = 'audio';
     else if (file.type.startsWith('video/')) type = 'video';
 
-    try {
-      const url = await uploadFile(file);
-      await sendMessage(selectedGuest.id, selectedGuest.phone, file.name, type, url, agentName);
-    } catch (error) {
-      console.error("Erro ao enviar arquivo:", error);
-      alert("Erro ao enviar arquivo. Verifique o console ou a conexão.");
+    // Cria URL local preview e abre o modal (se for imagem ou video, senao manda direto ou pode aplicar regra igual)
+    if (type === 'image' || type === 'video') {
+      const localUrl = URL.createObjectURL(file);
+      setPendingMedia({ file, url: localUrl, type });
+      setMediaCaption('');
+      // Limpa input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } else {
+      // Audio e docs vão direto como antes
+      try {
+        const url = await uploadFile(file);
+        await sendMessage(selectedGuest.id, selectedGuest.phone, file.name, type, url, agentName);
+      } catch (error) {
+        console.error("Erro ao enviar arquivo:", error);
+        alert("Erro ao enviar arquivo. Verifique o console ou a conexão.");
+      }
     }
+  };
+
+  const handleConfirmMediaSend = async () => {
+    if (!pendingMedia || !selectedGuest) return;
+
+    try {
+      const url = await uploadFile(pendingMedia.file);
+      // Se tiver caption usa ela, senao vai sem texto extra ou o nome
+      let captionText = mediaCaption.trim();
+      if (!captionText) {
+        if (pendingMedia.type === 'image') captionText = '📷 Imagem';
+        if (pendingMedia.type === 'video') captionText = '🎥 Vídeo';
+      }
+      await sendMessage(selectedGuest.id, selectedGuest.phone, captionText, pendingMedia.type, url, agentName);
+    } catch (error) {
+      console.error("Erro ao subir midia pendente:", error);
+      alert("Erro ao enviar mídia.");
+    } finally {
+      // Limpeza de estado
+      if (pendingMedia.url) URL.revokeObjectURL(pendingMedia.url);
+      setPendingMedia(null);
+      setMediaCaption('');
+    }
+  };
+
+  const handleCancelMedia = () => {
+    if (pendingMedia?.url) URL.revokeObjectURL(pendingMedia.url);
+    setPendingMedia(null);
+    setMediaCaption('');
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
@@ -194,13 +243,41 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
       const file = imageItem.getAsFile();
       if (!file) return;
 
-      try {
-        const url = await uploadFile(file);
-        await sendMessage(selectedGuest.id, selectedGuest.phone, '📷 Imagem colada', 'image', url, agentName);
-      } catch (error) {
-        console.error("Erro ao colar imagem:", error);
-        alert("Erro ao enviar imagem colada.");
-      }
+      const localUrl = URL.createObjectURL(file);
+      setPendingMedia({ file, url: localUrl, type: 'image' });
+      setMediaCaption('');
+    }
+  };
+
+  // Funções de Editar e Apagar Mensagens
+  const handleDeleteMessage = async (msg: Message) => {
+    if (!selectedGuest) return;
+    const confirmed = window.confirm("Deseja apagar essa mensagem permanentemente? Obs: na ZAPI isso só afetará o celular do hóspede se tiver sido enviada a menos de 15 minutos.");
+    if (!confirmed) return;
+
+    try {
+      await revokeMessage(selectedGuest.id, msg.id, msg.zapiId || '');
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao apagar");
+    }
+  };
+
+  const handleStartEdit = (msg: Message) => {
+    setEditingMessageId(msg.id);
+    setEditText(msg.text || '');
+  };
+
+  const handleSaveEdit = async (msg: Message) => {
+    if (!selectedGuest) return;
+    try {
+      await updateMessageZapi(selectedGuest.id, msg.id, msg.zapiId || '', selectedGuest.phone, editText);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao salvar edição");
+    } finally {
+      setEditingMessageId(null);
+      setEditText('');
     }
   };
 
@@ -357,7 +434,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   return (
     <div className="flex h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
       {/* LISTA LATERAL */}
-      <div className="w-80 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-colors duration-200">
+      <div className="w-80 flex-shrink-0 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col transition-colors duration-200">
         <div className="p-4 border-b border-slate-100 dark:border-slate-700">
           <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4">Mensagens</h2>
           <div className="relative">
@@ -413,7 +490,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
       </div>
 
       {/* ÁREA DE CHAT - CONTEÚDO */}
-      <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-900/50 transition-colors duration-200">
+      <div className="flex-1 min-w-0 flex flex-col bg-slate-50 dark:bg-slate-900/50 transition-colors duration-200 relative">
         {!selectedGuest ? (
           <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500 flex-col gap-4">
             <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center">
@@ -424,11 +501,11 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
         ) : (
           <>
             {/* HEADER DO CHAT */}
-            <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm z-10">
-              <div className="flex items-center gap-3">
-                <img src={selectedGuest.avatar} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
-                <div>
-                  <h2 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+            <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm z-10 w-full flex-shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <img src={selectedGuest.avatar} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex-shrink-0" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
+                <div className="min-w-0">
+                  <h2 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 truncate">
                     {selectedGuest.name}
                     {(selectedGuest.tags?.includes('Funcionário') || selectedGuest.status === 'internal') && (
                       <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] rounded-full border border-purple-200 flex items-center gap-1">
@@ -441,7 +518,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-shrink-0">
                 <button
                   onClick={async () => {
                     await updateGuest(selectedGuest.id, { unreadCount: 1 });
@@ -454,7 +531,8 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                 </button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-100/50 dark:bg-slate-900/20">
+            {/* AREA DE MENSAGENS E SCROLL - Corrigido Width Blowout min-w-0 e flex-1 */}
+            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto p-6 space-y-4 bg-slate-100/50 dark:bg-slate-900/20">
               {messages.map((msg, index) => {
                 const msgDate = msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000) : new Date();
                 const dateString = msgDate.toLocaleDateString();
@@ -477,20 +555,22 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                         </span>
                       </div>
                     )}
-                    <div className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'} group relative`}>
-                      {msg.sender === 'agent' && (
-                        <button
-                          onClick={() => setForwardingMessage(msg)}
-                          className="absolute right-full mr-2 self-center p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all bg-white dark:bg-slate-800 shadow-sm"
-                          title="Encaminhar"
-                        >
-                          <Forward size={14} />
-                        </button>
+                    <div className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'} relative group`}>
+
+                      {/* Botões do lado de FORA esquerdo (se HÓSPEDE mandou pra gente) */}
+                      {msg.sender === 'guest' && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center mr-2 self-center">
+                          <button onClick={() => setForwardingMessage(msg)} className="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full bg-white dark:bg-slate-800 shadow-sm" title="Encaminhar">
+                            <Forward size={14} />
+                          </button>
+                        </div>
                       )}
+
                       <div className={`max-w-[70%] p-3 rounded-xl shadow-md text-sm ${msg.sender === 'agent'
                         ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-tr-none'
                         : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-600 rounded-tl-none'
                         }`}>
+
                         {msg.type === 'image' && msg.mediaUrl && (
                           <div
                             className="mb-2 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-600 cursor-pointer"
@@ -512,7 +592,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                         {msg.type === 'document' && msg.mediaUrl && (
                           <div className="mb-2 p-3 bg-slate-50 dark:bg-slate-600 border border-slate-200 dark:border-slate-500 rounded-lg flex items-center gap-3">
                             <div className="bg-red-100 p-2 rounded text-red-500"><FileText size={24} /></div>
-                            <div className="flex-1 overflow-hidden">
+                            <div className="flex-1 min-w-0 overflow-hidden">
                               <p className="text-xs font-bold truncate text-slate-700 dark:text-slate-200">{msg.text || 'Documento'}</p>
                               <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Baixar Arquivo</a>
                             </div>
@@ -521,35 +601,96 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                         {msg.type === 'location' && msg.mediaUrl && (
                           <div className="mb-2 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
                             <div className="bg-slate-100 dark:bg-slate-600 p-8 flex justify-center items-center text-slate-400"><MapPin size={32} /></div>
-                            <div className="p-2 bg-white dark:bg-slate-700">
-                              <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"><MapPin size={12} /> Ver no Google Maps</a>
+                            <div className="p-2 bg-white dark:bg-slate-700 min-w-0">
+                              <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 truncate"><MapPin size={12} /> Ver no Google Maps</a>
                             </div>
                           </div>
                         )}
-                        <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.text || ''}</p>
+
+                        {/* Renderer de Texto com Suporte a Edição */}
+                        {editingMessageId === msg.id ? (
+                          <div className="flex flex-col gap-2 min-w-[200px] text-slate-800">
+                            <textarea
+                              value={editText}
+                              onChange={(e) => setEditText(e.target.value)}
+                              className="w-full rounded bg-white/90 p-2 text-sm outline-none resize-none"
+                              rows={3}
+                              autoFocus
+                            />
+                            <div className="flex justify-end gap-1">
+                              <button onClick={() => setEditingMessageId(null)} className="px-2 py-1 text-[10px] rounded bg-slate-200 hover:bg-slate-300 transition-colors">Cancelar</button>
+                              <button onClick={() => handleSaveEdit(msg)} className="px-2 py-1 text-[10px] rounded bg-emerald-700 text-emerald-50 hover:bg-emerald-800 flex items-center gap-1"><Check size={10} /> Salvar</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                            {msg.text || ''}
+                            {msg.edited && <span className="text-[10px] italic opacity-60 ml-1">(editado)</span>}
+                          </p>
+                        )}
+
                         <div className="flex justify-between items-end mt-1 gap-2">
                           {msg.isGroup && msg.sender === 'guest' && <span className="text-[9px] font-bold text-orange-500 opacity-80">{msg.participantName || (msg.participantPhone ? `+${msg.participantPhone.slice(-8, -4)}-${msg.participantPhone.slice(-4)}` : 'Membro')}</span>}
                           {msg.sender === 'agent' && <span className="text-[9px] font-bold text-emerald-100 opacity-80">{msg.agentName || 'Sistema'}</span>}
                           <span className={`text-[9px] opacity-70 ${msg.sender === 'agent' ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-300'}`}>{msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span>
                         </div>
                       </div>
-                      {msg.sender === 'guest' && (
-                        <button
-                          onClick={() => setForwardingMessage(msg)}
-                          className="absolute left-full ml-2 self-center p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full opacity-0 group-hover:opacity-100 transition-all bg-white dark:bg-slate-800 shadow-sm"
-                          title="Encaminhar"
-                        >
-                          <Forward size={14} />
-                        </button>
+
+                      {/* Botões do lado de FORA direito (Se NÓS mandamos a msg) */}
+                      {msg.sender === 'agent' && (
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center ml-2 self-center gap-1 shrink-0">
+                          {msg.type === 'text' && (
+                            <button onClick={() => handleStartEdit(msg)} className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full bg-white dark:bg-slate-800 shadow-sm" title="Editar">
+                              <Edit2 size={12} />
+                            </button>
+                          )}
+                          <button onClick={() => handleDeleteMessage(msg)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full bg-white dark:bg-slate-800 shadow-sm" title="Apagar">
+                            <Trash2 size={12} />
+                          </button>
+                          <button onClick={() => setForwardingMessage(msg)} className="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-full bg-white dark:bg-slate-800 shadow-sm" title="Encaminhar">
+                            <Forward size={14} />
+                          </button>
+                        </div>
                       )}
+
                     </div>
                   </div>
                 );
               })}
               <div ref={messagesEndRef} />
             </div>
+            {/* MODAL DE MEDIA PREVIEW PENDENTE */}
+            {pendingMedia && (
+              <div className="absolute inset-x-0 bottom-[h-full] z-20 m-4 p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 animate-in fade-in slide-in-from-bottom-4">
+                <div className="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <h3 className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2"><ImageIcon size={16} /> Pré-visualizar Mídia</h3>
+                  <button onClick={handleCancelMedia} className="text-slate-400 hover:text-red-500 rounded p-1"><X size={18} /></button>
+                </div>
+                <div className="flex gap-4">
+                  <div className="w-32 h-32 bg-slate-100 dark:bg-slate-900 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {pendingMedia.type === 'image' && <img src={pendingMedia.url} className="w-full h-full object-cover" />}
+                    {pendingMedia.type === 'video' && <video src={pendingMedia.url} className="max-w-full max-h-full" />}
+                  </div>
+                  <div className="flex-1 flex flex-col justify-end">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Adicionar uma legenda (opcional)</p>
+                    <div className="flex items-end gap-2 text-slate-800">
+                      <textarea
+                        className="flex-1 p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 dark:text-white resize-none outline-emerald-500"
+                        rows={2}
+                        placeholder="..."
+                        value={mediaCaption}
+                        autoFocus
+                        onChange={(e) => setMediaCaption(e.target.value)}
+                      />
+                      <button onClick={handleConfirmMediaSend} className="p-3 rounded-lg bg-emerald-600 text-white shrink-0 shadow hover:bg-emerald-700 active:scale-95 transition-all"><Send size={18} /></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* INPUT AREA */}
-            <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
+            <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 w-full flex-shrink-0">
               <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded-xl border border-slate-200 dark:border-slate-600 focus-within:ring-2 ring-emerald-500 transition-all relative">
                 {showTemplates && (
                   <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 max-h-80 overflow-y-auto z-50">
@@ -609,8 +750,8 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
         )}
       </div>
 
-      {/* BARRA LATERAL DIREITA - DETALHES */}
-      <div className="w-80 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 overflow-y-auto hidden lg:block transition-colors duration-200">
+      {/* BARRA LATERAL DIREITA - DETALHES flex-shrink-0 para não ser expulso pelo blowout */}
+      <div className="w-80 flex-shrink-0 bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 overflow-y-auto hidden lg:block transition-colors duration-200">
         {selectedGuest ? (
           <>
             <div className="flex border-b border-slate-100 dark:border-slate-700">

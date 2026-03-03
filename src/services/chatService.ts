@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { initializeFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, doc, updateDoc, deleteDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -22,7 +22,7 @@ const ZAPI_TOKEN = import.meta.env.VITE_ZAPI_TOKEN;
 const ZAPI_CLIENT_TOKEN = import.meta.env.VITE_ZAPI_CLIENT_TOKEN;
 
 export const subscribeToGuests = (cb: (data: any[]) => void) => {
-  const q = query(collection(db, "guests"), orderBy("lastMessageTime", "desc"));
+  const q = query(collection(db, "guests"), orderBy("lastMessageTime", "desc"), limit(50));
   return onSnapshot(q, (snap) => {
     const guests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     cb(guests);
@@ -119,6 +119,62 @@ export const sendMessage = async (
   } catch (error) {
     console.error("Erro Z-API:", error);
     alert("Erro ao enviar. Verifique conexão.");
+  }
+};
+
+export const revokeMessage = async (guestId: string, messageId: string, zapiId: string) => {
+  if (zapiId) {
+    try {
+      const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/messages/${zapiId}`;
+      await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Client-Token': ZAPI_CLIENT_TOKEN
+        }
+      });
+    } catch (error) {
+      console.error("Erro ao deletar na Z-API:", error);
+    }
+  }
+
+  try {
+    const msgRef = doc(db, "guests", guestId, "messages", messageId);
+    await deleteDoc(msgRef);
+  } catch (error) {
+    console.error("Erro ao deletar local:", error);
+  }
+};
+
+export const editMessage = async (guestId: string, messageId: string, zapiId: string, phone: string, newText: string) => {
+  if (zapiId && phone) {
+    try {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/messages/update`;
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Client-Token': ZAPI_CLIENT_TOKEN
+        },
+        body: JSON.stringify({
+          phone: cleanPhone,
+          messageId: zapiId,
+          message: newText
+        })
+      });
+    } catch (error) {
+      console.error("Erro ao editar na Z-API:", error);
+    }
+  }
+
+  try {
+    const msgRef = doc(db, "guests", guestId, "messages", messageId);
+    await updateDoc(msgRef, {
+      text: newText,
+      edited: true
+    });
+  } catch (error) {
+    console.error("Erro ao editar local:", error);
   }
 };
 
