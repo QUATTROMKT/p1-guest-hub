@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, doc, updateDoc, deleteDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { initializeFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, doc, updateDoc, deleteDoc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -137,7 +137,13 @@ export const sendMessage = async (
 export const revokeMessage = async (guestId: string, messageId: string, zapiId: string) => {
   if (zapiId) {
     try {
-      const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/messages/${zapiId}`;
+      // Z-API delete requires query params: messageId, phone, and owner=true
+      // Note: phone needs to be the destination phone
+      const guestSnap = await getDoc(doc(db, "guests", guestId));
+      const phone = guestSnap.exists() ? guestSnap.data().phone : '';
+      const cleanPhone = phone.replace(/\D/g, '');
+
+      const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/messages?messageId=${zapiId}&phone=${cleanPhone}&owner=true`;
       await fetch(url, {
         method: 'DELETE',
         headers: {
@@ -161,17 +167,17 @@ export const editMessage = async (guestId: string, messageId: string, zapiId: st
   if (zapiId && phone) {
     try {
       const cleanPhone = phone.replace(/\D/g, '');
-      const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/messages`;
+      const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`;
       await fetch(url, {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Client-Token': ZAPI_CLIENT_TOKEN
         },
         body: JSON.stringify({
           phone: cleanPhone,
-          messageId: zapiId,
-          message: newText
+          message: newText,
+          editMessageId: zapiId
         })
       });
     } catch (error) {
