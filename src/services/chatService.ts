@@ -112,6 +112,18 @@ export const sendMessage = async (
     }).then(async (response) => {
       const data = await response.json().catch(() => ({}));
       console.log('[Z-API] Status:', response.status, 'Response:', data);
+
+      if (response.ok && data.messageId) {
+        // Grava o zapiId instantaneamente para que Editar e Apagar funcionem logo após o envio
+        try {
+          await updateDoc(doc(db, "guests", guestId, "messages", localDocId), {
+            zapiId: data.messageId
+          });
+        } catch (updateErr) {
+          console.error("Erro ao gravar zapiId localmente:", updateErr);
+        }
+      }
+
       if (!response.ok) {
         console.error('[Z-API] Erro na resposta:', response.status, data);
       }
@@ -149,9 +161,9 @@ export const editMessage = async (guestId: string, messageId: string, zapiId: st
   if (zapiId && phone) {
     try {
       const cleanPhone = phone.replace(/\D/g, '');
-      const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/messages/update`;
+      const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/messages`;
       await fetch(url, {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Client-Token': ZAPI_CLIENT_TOKEN
