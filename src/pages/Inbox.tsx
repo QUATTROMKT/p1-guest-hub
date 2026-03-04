@@ -206,10 +206,6 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
       const url = await uploadFile(pendingMedia.file);
       // Se tiver caption usa ela, senao vai sem texto extra ou o nome
       let captionText = mediaCaption.trim();
-      if (!captionText) {
-        if (pendingMedia.type === 'image') captionText = '📷 Imagem';
-        if (pendingMedia.type === 'video') captionText = '🎥 Vídeo';
-      }
       await sendMessage(selectedGuest.id, selectedGuest.phone, captionText, pendingMedia.type, url, agentName);
     } catch (error) {
       console.error("Erro ao subir midia pendente:", error);
@@ -412,6 +408,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'reserva': return 'bg-blue-600 text-white border-blue-600';
+      case 'cancelada': return 'bg-red-600 text-white border-red-600';
       case 'checkin': return 'bg-emerald-600 text-white border-emerald-600';
       case 'checkout': return 'bg-slate-600 text-white border-slate-600';
       case 'internal': return 'bg-purple-600 text-white border-purple-600';
@@ -430,6 +427,24 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   };
 
   const mediaMessages = messages.filter(m => ['image', 'video', 'document'].includes(m.type));
+
+  // GARANTIR ORDEM EXATA DAS MENSAGENS:
+  // Como o Firebase manda pra gente, vamos dar um sort duplo pra ter certeza absoluta
+  const sortedMessages = [...messages].sort((a, b) => {
+    const timeA = a.createdAt?.seconds || 0;
+    const timeB = b.createdAt?.seconds || 0;
+    if (timeA === timeB) {
+      // Desempate por nanosegundos se existir
+      const nanoA = a.createdAt?.nanoseconds || 0;
+      const nanoB = b.createdAt?.nanoseconds || 0;
+      if (nanoA === nanoB) {
+        // Desempate final pelo localDocId ou default alfabético para forçar constância
+        return a.id.localeCompare(b.id);
+      }
+      return nanoA - nanoB;
+    }
+    return timeA - timeB;
+  });
 
   return (
     <div className="flex h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
@@ -501,12 +516,12 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
         ) : (
           <>
             {/* HEADER DO CHAT */}
-            <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm z-10 w-full flex-shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center shadow-sm z-10 w-full flex-shrink-0 min-w-0 max-w-full">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
                 <img src={selectedGuest.avatar} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-600 flex-shrink-0" onError={(e) => (e.currentTarget.src = `https://ui-avatars.com/api/?name=${selectedGuest.name}&background=10b981&color=fff`)} />
-                <div className="min-w-0">
+                <div className="flex-1 min-w-0 flex flex-col justify-center overflow-hidden">
                   <h2 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 truncate">
-                    {selectedGuest.name}
+                    <span className="truncate">{selectedGuest.name}</span>
                     {(selectedGuest.tags?.includes('Funcionário') || selectedGuest.status === 'internal') && (
                       <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] rounded-full border border-purple-200 flex items-center gap-1">
                         <Shield size={10} /> Equipe
@@ -518,7 +533,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="flex items-center gap-3 flex-shrink-0 ml-4">
                 <button
                   onClick={async () => {
                     await updateGuest(selectedGuest.id, { unreadCount: 1 });
@@ -532,8 +547,8 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
               </div>
             </div>
             {/* AREA DE MENSAGENS E SCROLL - Corrigido Width Blowout min-w-0 e flex-1 */}
-            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto p-6 space-y-4 bg-slate-100/50 dark:bg-slate-900/20">
-              {messages.map((msg, index) => {
+            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto w-full p-6 space-y-4 bg-slate-100/50 dark:bg-slate-900/20">
+              {sortedMessages.map((msg, index) => {
                 const msgDate = msg.createdAt?.seconds ? new Date(msg.createdAt.seconds * 1000) : new Date();
                 const dateString = msgDate.toLocaleDateString();
                 const prevMsg = index > 0 ? messages[index - 1] : null;
@@ -781,6 +796,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                     <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer text-center dark:bg-slate-800 ${getStatusColor(editData.status || 'lead')}`}>
                       <option value="lead">Em Negociação</option>
                       <option value="reserva">Reserva Confirmada</option>
+                      <option value="cancelada">Reserva Cancelada</option>
                       <option value="checkin">Check-in Realizado</option>
                       <option value="checkout">Check-out</option>
                     </select>

@@ -158,6 +158,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                 <option value="all">Todos os Status</option>
                                 <option value="lead">Em Negociação</option>
                                 <option value="reserva">Reserva Confirmada</option>
+                                <option value="cancelada">Reserva Cancelada</option>
                                 <option value="checkin">Hóspede na Casa</option>
                                 <option value="checkout">Finalizado</option>
                                 <option value="internal">Equipe</option>
@@ -195,13 +196,15 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                                 onChange={(e) => handleUpdateStatus(guest.id, e.target.value)}
                                                 className={`px-2 py-1 rounded-full text-xs font-bold border-none outline-none cursor-pointer appearance-none text-center w-full max-w-[140px]
                                                     ${guest.status === 'reserva' ? 'bg-blue-100 text-blue-700' :
-                                                        guest.status === 'checkin' ? 'bg-emerald-100 text-emerald-700' :
-                                                            guest.status === 'checkout' ? 'bg-slate-100 text-slate-700' :
-                                                                guest.status === 'internal' ? 'bg-purple-100 text-purple-700' :
-                                                                    'bg-yellow-100 text-yellow-700'}`}
+                                                        guest.status === 'cancelada' ? 'bg-red-100 text-red-700' :
+                                                            guest.status === 'checkin' ? 'bg-emerald-100 text-emerald-700' :
+                                                                guest.status === 'checkout' ? 'bg-slate-100 text-slate-700' :
+                                                                    guest.status === 'internal' ? 'bg-purple-100 text-purple-700' :
+                                                                        'bg-yellow-100 text-yellow-700'}`}
                                             >
                                                 <option value="lead">Em Negociação</option>
                                                 <option value="reserva">Reserva Confirmada</option>
+                                                <option value="cancelada">Reserva Cancelada</option>
                                                 <option value="checkin">Hóspede na Casa</option>
                                                 <option value="checkout">Finalizado</option>
                                                 <option value="internal">Equipe</option>
