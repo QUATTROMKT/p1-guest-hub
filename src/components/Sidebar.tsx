@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { LayoutDashboard, MessageSquare, LogOut, Users, ClipboardList, Moon, Sun, BarChart3 } from 'lucide-react';
 import { getAuth, signOut } from 'firebase/auth';
 import { hasReportsAccess, getAgentName } from '../utils/authUtils';
+import { subscribeToTasks } from '../services/chatService';
 
 interface SidebarProps {
   activePage: string;
@@ -13,6 +15,16 @@ export function Sidebar({ activePage, onNavigate, theme, onToggleTheme }: Sideba
   const auth = getAuth();
   const agentName = auth.currentUser ? getAgentName(auth.currentUser) : '';
   const firstName = agentName.split(' ')[0];
+
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToTasks((data: any[]) => {
+      const pending = data.filter(t => t.status === 'pending');
+      setPendingTasksCount(pending.length);
+    });
+    return () => unsubscribe();
+  }, []);
 
   return (
     <aside className="w-20 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col items-center py-6 shadow-sm z-20 transition-colors duration-200">
@@ -49,10 +61,16 @@ export function Sidebar({ activePage, onNavigate, theme, onToggleTheme }: Sideba
 
         <button
           onClick={() => onNavigate('tasks')}
-          className={`p-3 rounded-xl transition-all group flex justify-center ${activePage === 'tasks' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:bg-slate-50 hover:text-emerald-600'}`}
+          className={`relative p-3 rounded-xl transition-all group flex justify-center ${activePage === 'tasks' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-200' : 'text-slate-400 hover:bg-slate-50 hover:text-emerald-600'}`}
           title="Tarefas"
         >
           <ClipboardList size={24} />
+          {pendingTasksCount > 0 && (
+            <span className="absolute top-2 right-2 flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-white dark:border-slate-900 border-opacity-50"></span>
+            </span>
+          )}
         </button>
 
         {hasReportsAccess(getAuth().currentUser) && (
