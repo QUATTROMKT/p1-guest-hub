@@ -589,10 +589,10 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
 
                         {msg.type === 'image' && msg.mediaUrl && (
                           <div
-                            className="mb-2 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-600 cursor-pointer"
+                            className="mb-2 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-600 cursor-pointer max-w-[280px]"
                             onClick={() => setExpandedImage(msg.mediaUrl!)}
                           >
-                            <img src={msg.mediaUrl} alt="Imagem" className="w-full h-auto object-cover hover:opacity-90 transition-opacity" loading="lazy" />
+                            <img src={msg.mediaUrl} alt="Imagem" className="w-full max-h-[300px] object-cover hover:opacity-90 transition-opacity" loading="lazy" />
                           </div>
                         )}
                         {msg.type === 'audio' && msg.mediaUrl && (
