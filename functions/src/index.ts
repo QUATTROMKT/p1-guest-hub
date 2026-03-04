@@ -153,6 +153,8 @@ export const processZapiWebhook = onDocumentCreated({
       guestName = "Hóspede (WhatsApp)";
     }
 
+    const messageTime = body.momment ? admin.firestore.Timestamp.fromMillis(body.momment) : admin.firestore.FieldValue.serverTimestamp();
+
     if (isGroup) {
       targetPhone = normalizePhone((body.phone || body.chatId || "").split('@')[0]);
     } else {
@@ -197,7 +199,7 @@ export const processZapiWebhook = onDocumentCreated({
         name: guestName, phone: targetPhone, lid: lid,
         avatar: body.photo || `https://ui-avatars.com/api/?name=${guestName}&background=random`,
         status: "lead", tags: ["WhatsApp"], lastMessage: text,
-        lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessageTime: messageTime,
         unreadCount: isFromHotel ? 0 : 1, isGroup: isGroup,
         cpf: "", email: "", checkinDate: "", checkoutDate: ""
       }, { merge: true });
@@ -207,7 +209,7 @@ export const processZapiWebhook = onDocumentCreated({
       const docData = matchedDoc.data();
       const updateData: any = {
         lastMessage: text,
-        lastMessageTime: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessageTime: messageTime,
       };
       if (lid && !docData.lid) updateData.lid = lid;
       if (guestName !== "Hóspede (WhatsApp)" && (docData.name === "Hóspede (WhatsApp)" || !docData.name)) {
@@ -259,7 +261,7 @@ export const processZapiWebhook = onDocumentCreated({
     await messagesRef.doc(docId).set({
       text: text,
       sender: senderType,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: messageTime,
       type: messageType,
       mediaUrl: mediaUrl,
       status: "read",
