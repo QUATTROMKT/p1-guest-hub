@@ -161,6 +161,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                 <option value="cancelada">Reserva Cancelada</option>
                                 <option value="checkin">Hóspede na Casa</option>
                                 <option value="checkout">Finalizado</option>
+                                <option value="atendimento_finalizado">Atendimento Finalizado</option>
                                 <option value="internal">Equipe</option>
                             </select>
                         </div>
@@ -199,14 +200,16 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                                         guest.status === 'cancelada' ? 'bg-red-100 text-red-700' :
                                                             guest.status === 'checkin' ? 'bg-emerald-100 text-emerald-700' :
                                                                 guest.status === 'checkout' ? 'bg-slate-100 text-slate-700' :
-                                                                    guest.status === 'internal' ? 'bg-purple-100 text-purple-700' :
-                                                                        'bg-yellow-100 text-yellow-700'}`}
+                                                                    guest.status === 'atendimento_finalizado' ? 'bg-stone-200 text-stone-700' :
+                                                                        guest.status === 'internal' ? 'bg-purple-100 text-purple-700' :
+                                                                            'bg-yellow-100 text-yellow-700'}`}
                                             >
                                                 <option value="lead">Em Negociação</option>
                                                 <option value="reserva">Reserva Confirmada</option>
                                                 <option value="cancelada">Reserva Cancelada</option>
                                                 <option value="checkin">Hóspede na Casa</option>
                                                 <option value="checkout">Finalizado</option>
+                                                <option value="atendimento_finalizado">Atendimento Finalizado</option>
                                                 <option value="internal">Equipe</option>
                                             </select>
                                         </td>

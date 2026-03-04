@@ -411,6 +411,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
       case 'cancelada': return 'bg-red-600 text-white border-red-600';
       case 'checkin': return 'bg-emerald-600 text-white border-emerald-600';
       case 'checkout': return 'bg-slate-600 text-white border-slate-600';
+      case 'atendimento_finalizado': return 'bg-stone-500 text-white border-stone-500';
       case 'internal': return 'bg-purple-600 text-white border-purple-600';
       default: return 'bg-yellow-400 text-yellow-900 border-yellow-400';
     }
@@ -799,6 +800,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                       <option value="cancelada">Reserva Cancelada</option>
                       <option value="checkin">Check-in Realizado</option>
                       <option value="checkout">Check-out</option>
+                      <option value="atendimento_finalizado">Atendimento Finalizado</option>
                     </select>
                   </div>
                 </div>
