@@ -10,6 +10,19 @@ db.settings({ ignoreUndefinedProperties: true });
 // Helpers globais
 const normalizePhone = (p: string): string => (p || "").replace(/\D/g, '').replace(/id$/i, '');
 
+// Valida se é um telefone brasileiro real (10–13 dígitos, com DDI 55)
+// Rejeita LIDs do WhatsApp (números internos longos tipo 206279811873824)
+const isValidBrazilianPhone = (phone: string): boolean => {
+  const clean = (phone || "").replace(/\D/g, '');
+  if (!clean) return false;
+  // Telefone brasileiro: 10-13 dígitos, deve começar com 55 ou ter 10-11 dígitos locais
+  if (clean.startsWith("55")) {
+    return clean.length >= 12 && clean.length <= 13;
+  }
+  // Sem DDI: 10-11 dígitos (DDD + número)
+  return clean.length >= 10 && clean.length <= 11;
+};
+
 const getDeterministicId = (phone: string): string => {
   let p = (phone || "").replace(/\D/g, '');
   if (!p) return "";
@@ -167,6 +180,15 @@ export const processZapiWebhook = onDocumentCreated({
       return;
     }
 
+    // CRÍTICO: Rejeitar LIDs do WhatsApp (números internos longos)
+    // LIDs são IDs internos do WhatsApp tipo 206279811873824 (15+ dígitos)
+    // Telefones brasileiros reais: 12-13 dígitos com DDI, ou 10-11 sem DDI
+    if (targetPhone.length > 13 && !isGroup) {
+      console.log(`[Webhook Processor] Ignored - LID/internal number detected: ${targetPhone}`);
+      await snap.ref.update({ status: "processed_lid_ignored", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return;
+    }
+
     const guestsRef = db.collection("guests");
     let guestId = "";
     let matchedDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
@@ -273,22 +295,28 @@ export const processZapiWebhook = onDocumentCreated({
     }, { merge: true });
 
     if (!isFromHotel && !matchedDoc && !isGroup) {
-      try {
-        const ZAPI_INSTANCE = "3EDDA716EC1BF3F118711AC0A90830D6";
-        const ZAPI_TOKEN = "2CA5B27FD7E8EA7872F88116";
-        const ZAPI_CLIENT_TOKEN = "Fba70686a73f5409da3e0f33bfee5a190S";
+      // CRÍTICO: Só envia auto-reply para telefones brasileiros válidos
+      const phoneIsValid = isValidBrazilianPhone(targetPhone);
+      if (!phoneIsValid) {
+        console.log(`[Webhook Processor] Auto-reply BLOCKED - invalid phone: ${targetPhone}`);
+      } else {
+        try {
+          const ZAPI_INSTANCE = "3EDDA716EC1BF3F118711AC0A90830D6";
+          const ZAPI_TOKEN = "2CA5B27FD7E8EA7872F88116";
+          const ZAPI_CLIENT_TOKEN = "Fba70686a73f5409da3e0f33bfee5a190S";
 
-        const welcomeText = "P1 Hotel Reservas agradece seu contato.\nPara orçamento de reserva, por favor, informe a data desejada e a quantidade de pessoas por quarto, logo retornamos.";
-        const cleanPhone = targetPhone.replace(/\D/g, '');
-        const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`;
+          const welcomeText = "P1 Hotel Reservas agradece seu contato.\nPara orçamento de reserva, por favor, informe a data desejada e a quantidade de pessoas por quarto, logo retornamos.";
+          const cleanPhone = targetPhone.replace(/\D/g, '');
+          const url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`;
 
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Client-Token': ZAPI_CLIENT_TOKEN },
-          body: JSON.stringify({ phone: cleanPhone, message: welcomeText })
-        }).catch(err => console.error("[Webhook Processor] Erro auto-reply", err));
-      } catch (e) {
-        console.error("Auto reply fail", e);
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Client-Token': ZAPI_CLIENT_TOKEN },
+            body: JSON.stringify({ phone: cleanPhone, message: welcomeText })
+          }).catch(err => console.error("[Webhook Processor] Erro auto-reply", err));
+        } catch (e) {
+          console.error("Auto reply fail", e);
+        }
       }
     }
 
