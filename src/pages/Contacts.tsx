@@ -36,7 +36,8 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
     }, []);
 
     const filteredGuests = guests.filter(g => {
-        const matchesSearch = g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm);
+        const search = searchTerm.toLowerCase();
+        const matchesSearch = g.name.toLowerCase().includes(search) || g.phone.includes(searchTerm) || (g.tags && g.tags.some(t => t.toLowerCase().includes(search)));
         const matchesStatus = statusFilter === 'all' || g.status === statusFilter;
         return matchesSearch && matchesStatus;
     });
@@ -143,7 +144,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                             <Search className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
                             <input
                                 type="text"
-                                placeholder="Buscar por nome ou telefone..."
+                                placeholder="Buscar por nome, telefone ou tag (ex: 403)..."
                                 className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
