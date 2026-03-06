@@ -17,8 +17,11 @@ export const checkAndTriggerAutomation = async (
         case 'checkin':
             templateId = 'checkin_pt'; // Poderia ser lógica pra checkin_es dependendo do telefone (+54...)
             break;
+        case 'previsao_checkout':
+            templateId = 'previsao_checkout_msg';
+            break;
         case 'checkout':
-            templateId = 'checkout_msg';
+            templateId = 'checkout_finalizado_msg';
             break;
         default:
             return null;

@@ -37,6 +37,8 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'pinned'>('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [newTag, setNewTag] = useState('');
   const [localNote, setLocalNote] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
@@ -174,6 +176,13 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     if (!e.target.files || !e.target.files[0] || !selectedGuest) return;
     const file = e.target.files[0];
 
+    // Limit: 50MB
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Arquivo muito grande. Limite: 50MB');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     // Determinar tipo
     let type: 'image' | 'video' | 'audio' | 'document' = 'document';
     if (file.type.startsWith('image/')) type = 'image';
@@ -192,9 +201,16 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
       try {
         const url = await uploadFile(file);
         await sendMessage(selectedGuest.id, selectedGuest.phone, file.name, type, url, agentName);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Erro ao enviar arquivo:", error);
-        alert("Erro ao enviar arquivo. Verifique o console ou a conexão.");
+        const errorMsg = error?.code === 'storage/unauthorized'
+          ? 'Sem permissão para upload. Verifique se está logado.'
+          : error?.message?.includes('CORS') || error?.message?.includes('Failed to fetch')
+            ? 'Erro de CORS no Storage. O administrador precisa configurar CORS no Firebase Storage.'
+            : `Erro ao enviar arquivo: ${error?.message || 'Verifique o console.'}`;
+        alert(errorMsg);
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
     }
   };
@@ -393,7 +409,13 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     return date.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: '2-digit' });
   };
 
-  const filteredGuests = guests.filter(g => g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm));
+  const filteredGuests = guests.filter(g => {
+    if (g.isGroup) return false;
+    const matchesSearch = g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm);
+    const matchesChatFilter = chatFilter === 'all' || (chatFilter === 'unread' && (g.unreadCount || 0) > 0) || (chatFilter === 'pinned' && g.pinned);
+    const matchesStatus = statusFilter === 'all' || g.status === statusFilter;
+    return matchesSearch && matchesChatFilter && matchesStatus;
+  });
 
   // Sort guests: Pinned first, then by lastMessageTime
   const sortedGuests = [...filteredGuests].sort((a, b) => {
@@ -404,18 +426,33 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     return timeB - timeA;
   });
 
-  const forwardFilteredGuests = guests.filter(g => g.name.toLowerCase().includes(forwardSearchTerm.toLowerCase()) || g.phone.includes(forwardSearchTerm));
+  const forwardFilteredGuests = guests.filter(g => !g.isGroup && (g.name.toLowerCase().includes(forwardSearchTerm.toLowerCase()) || g.phone.includes(forwardSearchTerm)));
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'reserva': return 'bg-blue-600 text-white border-blue-600';
       case 'cancelada': return 'bg-red-600 text-white border-red-600';
       case 'checkin': return 'bg-emerald-600 text-white border-emerald-600';
+      case 'previsao_checkout': return 'bg-orange-500 text-white border-orange-500';
       case 'checkout': return 'bg-slate-600 text-white border-slate-600';
       case 'atendimento_finalizado': return 'bg-stone-500 text-white border-stone-500';
       case 'internal': return 'bg-purple-600 text-white border-purple-600';
       default: return 'bg-yellow-400 text-yellow-900 border-yellow-400';
     }
   };
+
+  const unreadCount = guests.filter(g => !g.isGroup && (g.unreadCount || 0) > 0).length;
+
+  const statusOptions = [
+    { value: 'all', label: 'Todos' },
+    { value: 'lead', label: 'Negociação', color: 'bg-yellow-400' },
+    { value: 'reserva', label: 'Reserva', color: 'bg-blue-500' },
+    { value: 'cancelada', label: 'Cancelada', color: 'bg-red-500' },
+    { value: 'checkin', label: 'Na Casa', color: 'bg-emerald-500' },
+    { value: 'previsao_checkout', label: 'Prev. Checkout', color: 'bg-orange-500' },
+    { value: 'checkout', label: 'Finalizado', color: 'bg-slate-500' },
+    { value: 'atendimento_finalizado', label: 'Atend. Final.', color: 'bg-stone-500' },
+    { value: 'internal', label: 'Equipe', color: 'bg-purple-500' },
+  ];
 
   const getTagStyle = (tag: string) => {
     if (tag.toLowerCase() === 'funcionário' || tag.toLowerCase() === 'funcionario') {
@@ -461,6 +498,39 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
               className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
             />
+          </div>
+
+          {/* FILTROS: Tudo / Não Lidas / Fixados */}
+          <div className="flex gap-1.5 mt-3">
+            <button
+              onClick={() => setChatFilter('all')}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${chatFilter === 'all' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+            >Tudo</button>
+            <button
+              onClick={() => setChatFilter('unread')}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all flex items-center gap-1 ${chatFilter === 'unread' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+            >
+              Não lidas
+              {unreadCount > 0 && <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${chatFilter === 'unread' ? 'bg-white/20' : 'bg-emerald-500 text-white'}`}>{unreadCount}</span>}
+            </button>
+            <button
+              onClick={() => setChatFilter('pinned')}
+              className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${chatFilter === 'pinned' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+            >Fixados</button>
+          </div>
+
+          {/* FILTRO POR STATUS */}
+          <div className="flex gap-1 mt-2 flex-wrap">
+            {statusOptions.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setStatusFilter(opt.value)}
+                className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 ${statusFilter === opt.value ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-800 shadow-sm' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                {opt.color && <span className={`w-1.5 h-1.5 rounded-full ${opt.color}`} />}
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -736,7 +806,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                   ref={fileInputRef}
                   className="hidden"
                   onChange={handleFileUpload}
-                  accept="image/*,audio/*,video/*,application/pdf"
+                  accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.ppt,.pptx,.zip,.rar"
                 />
                 <textarea
                   ref={textareaRef}
@@ -799,67 +869,14 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                       <option value="reserva">Reserva Confirmada</option>
                       <option value="cancelada">Reserva Cancelada</option>
                       <option value="checkin">Check-in Realizado</option>
-                      <option value="checkout">Check-out</option>
+                      <option value="previsao_checkout">Previsão de Checkout</option>
+                      <option value="checkout">Checkout Finalizado</option>
                       <option value="atendimento_finalizado">Atendimento Finalizado</option>
                     </select>
                   </div>
                 </div>
 
-                {/* MEMBROS DO GRUPO */}
-                {selectedGuest?.isGroup && (
-                  <div className="p-4 border-b border-slate-100 dark:border-slate-700">
-                    <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <User size={12} /> Membros do Grupo ({(() => {
-                        const members = new Map<string, string>();
-                        messages.forEach(m => {
-                          if (m.sender === 'guest' && (m.participantPhone || m.participantName)) {
-                            const key = m.participantPhone || m.participantName || '';
-                            if (!members.has(key)) {
-                              members.set(key, m.participantName || m.participantPhone || 'Membro');
-                            }
-                          }
-                        });
-                        return members.size;
-                      })()})
-                    </h3>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {(() => {
-                        const members = new Map<string, { name: string; phone: string; lastSeen: number }>();
-                        messages.forEach(m => {
-                          if (m.sender === 'guest' && (m.participantPhone || m.participantName)) {
-                            const key = m.participantPhone || m.participantName || '';
-                            const existing = members.get(key);
-                            const ts = m.createdAt?.seconds || 0;
-                            if (!existing || ts > existing.lastSeen) {
-                              members.set(key, {
-                                name: m.participantName || '',
-                                phone: m.participantPhone || '',
-                                lastSeen: ts,
-                              });
-                            }
-                          }
-                        });
-                        return Array.from(members.values()).map((member, i) => (
-                          <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-700/50">
-                            <div className="w-7 h-7 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-600 dark:text-orange-400 text-xs font-bold">
-                              {(member.name || member.phone || '?')[0].toUpperCase()}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">
-                                {member.name || 'Membro'}
-                              </p>
-                              {member.phone && (
-                                <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
-                                  {member.phone}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  </div>
-                )}
+
 
                 <div className="p-6 space-y-6">
                   <div>

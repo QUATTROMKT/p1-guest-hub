@@ -62,11 +62,15 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     const body = req.body;
     console.log("[Webhook Fast Receiver] Body received. Generating event ID.");
 
-    if (body.status || body.connectedPhone) {
-      if (!body.text && !body.image && !body.audio && !body.video && !body.document) {
-        res.status(200).send("Ignored (Status Update)");
-        return;
-      }
+    // Ignorar eventos de status puro (delivery ack, read receipts, connection events)
+    // que NÃO contêm conteúdo de mensagem
+    const hasContent = body.text || body.image || body.audio || body.video || body.document 
+      || body.imageUrl || body.audioUrl || body.videoUrl || body.documentUrl 
+      || body.sticker || body.location || body.messageId;
+    const isStatusEvent = (body.status && !body.fromMe && !hasContent) || (body.connectedPhone && !hasContent);
+    if (isStatusEvent) {
+      res.status(200).send("Ignored (Status/Connection Event)");
+      return;
     }
 
     const messageId = body.messageId || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -99,10 +103,15 @@ export const processZapiWebhook = onDocumentCreated({
 
     console.log(`[Webhook Processor] Processing event ${eventId}`);
 
-    if (body.status || body.connectedPhone) {
-      if (!body.text && !body.image && !body.audio && !body.video && !body.document) {
-        return;
-      }
+    // Ignorar eventos de status puro (delivery ack, read receipts, connection events)
+    const hasContent = body.text || body.image || body.audio || body.video || body.document
+      || body.imageUrl || body.audioUrl || body.videoUrl || body.documentUrl
+      || body.sticker || body.location || body.messageId;
+    const isStatusEvent = (body.status && !body.fromMe && !hasContent) || (body.connectedPhone && !hasContent);
+    if (isStatusEvent) {
+      console.log(`[Webhook Processor] Ignored status/connection event ${eventId}`);
+      await snap.ref.update({ status: "processed_status_event", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return;
     }
 
     const isFromHotel = body.fromMe === true;
@@ -150,6 +159,14 @@ export const processZapiWebhook = onDocumentCreated({
     }
 
     const isGroup = body.isGroup === true;
+
+    // GRUPOS: Ignorar completamente - o sistema opera apenas com contatos individuais
+    if (isGroup) {
+      console.log(`[Webhook Processor] Group message ignored.`);
+      await snap.ref.update({ status: "processed_group_ignored", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return;
+    }
+
     let targetPhone = "";
     let participantPhone = normalizePhone(body.participantPhone || "");
     if (!participantPhone) participantPhone = "Desconhecido";

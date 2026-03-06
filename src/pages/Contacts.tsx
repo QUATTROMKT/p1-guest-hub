@@ -10,6 +10,7 @@ interface Guest {
     status: string; tags: string[]; notes?: string; lastMessage?: string; lastMessageTime?: any;
     email?: string; cpf?: string;
     createdBy?: string; lastUpdatedBy?: string;
+    isGroup?: boolean;
 }
 
 interface ContactsProps {
@@ -29,7 +30,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
 
     useEffect(() => {
         const unsubscribe = subscribeToGuests((data: any[]) => {
-            setGuests(data as Guest[]);
+            setGuests((data as Guest[]).filter(g => !g.isGroup));
         });
         return () => unsubscribe();
     }, []);
@@ -160,7 +161,8 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                 <option value="reserva">Reserva Confirmada</option>
                                 <option value="cancelada">Reserva Cancelada</option>
                                 <option value="checkin">Hóspede na Casa</option>
-                                <option value="checkout">Finalizado</option>
+                                <option value="previsao_checkout">Previsão de Checkout</option>
+                                <option value="checkout">Checkout Finalizado</option>
                                 <option value="atendimento_finalizado">Atendimento Finalizado</option>
                                 <option value="internal">Equipe</option>
                             </select>
@@ -199,16 +201,18 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                                     ${guest.status === 'reserva' ? 'bg-blue-100 text-blue-700' :
                                                         guest.status === 'cancelada' ? 'bg-red-100 text-red-700' :
                                                             guest.status === 'checkin' ? 'bg-emerald-100 text-emerald-700' :
-                                                                guest.status === 'checkout' ? 'bg-slate-100 text-slate-700' :
-                                                                    guest.status === 'atendimento_finalizado' ? 'bg-stone-200 text-stone-700' :
-                                                                        guest.status === 'internal' ? 'bg-purple-100 text-purple-700' :
-                                                                            'bg-yellow-100 text-yellow-700'}`}
+                                                                guest.status === 'previsao_checkout' ? 'bg-orange-100 text-orange-700' :
+                                                                    guest.status === 'checkout' ? 'bg-slate-100 text-slate-700' :
+                                                                        guest.status === 'atendimento_finalizado' ? 'bg-stone-200 text-stone-700' :
+                                                                            guest.status === 'internal' ? 'bg-purple-100 text-purple-700' :
+                                                                                'bg-yellow-100 text-yellow-700'}`}
                                             >
                                                 <option value="lead">Em Negociação</option>
                                                 <option value="reserva">Reserva Confirmada</option>
                                                 <option value="cancelada">Reserva Cancelada</option>
                                                 <option value="checkin">Hóspede na Casa</option>
-                                                <option value="checkout">Finalizado</option>
+                                                <option value="previsao_checkout">Previsão de Checkout</option>
+                                                <option value="checkout">Checkout Finalizado</option>
                                                 <option value="atendimento_finalizado">Atendimento Finalizado</option>
                                                 <option value="internal">Equipe</option>
                                             </select>

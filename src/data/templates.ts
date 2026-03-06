@@ -284,12 +284,19 @@ Check-out: hasta las 12:00 h.`
 Prime Hotel LTDA`
   },
   {
-    id: 'checkout_msg',
-    title: '👋 Checkout',
+    id: 'previsao_checkout_msg',
+    title: '⏰ Previsão de Checkout',
     text: `Seu checkout está agendado para ocorrer hoje as 12h (meio dia).
 Caso queira permanecer conosco, peço por gentileza que nos retorne, pois estamos com a ocupação do hotel bastante alta e pode ser que não tenhamos mais disponibilidade para hoje.
 Agradecemos a compreensão.
 Atenciosamente, equipe P1!☺️`
+  },
+  {
+    id: 'checkout_finalizado_msg',
+    title: '⭐ Checkout Finalizado',
+    text: `Ficamos felizes em recebê-los em nosso hotel, neste momento gostaríamos que nos falassem um pouco sobre a experiência em nossa casa.
+O link segue abaixo e sua avaliação é de extrema importância para que possamos sempre oferecer o melhor para quem hospeda-se conosco.
+👉 https://www.google.com/maps/search/P1+Hotel+Santa+Maria+RS`
   },
   {
     id: 'infos_horarios',
