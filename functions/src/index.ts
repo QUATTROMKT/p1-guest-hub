@@ -210,11 +210,27 @@ export const processZapiWebhook = onDocumentCreated({
     let guestId = "";
     let matchedDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
+    // Gerar TODAS as variações possíveis do telefone para matching robusto
     const phoneVariants: string[] = [targetPhone];
     if (targetPhone.startsWith("55") && targetPhone.length > 10) phoneVariants.push(targetPhone.substring(2));
-    if (!targetPhone.startsWith("55")) phoneVariants.push("55" + targetPhone);
+    if (!targetPhone.startsWith("55") && targetPhone.length >= 10) phoneVariants.push("55" + targetPhone);
+    // Variantes com/sem 9º dígito (celulares BR)
+    for (const base of [...phoneVariants]) {
+      const local = base.startsWith("55") && base.length > 10 ? base.substring(2) : base;
+      if (local.length === 11 && local[2] === '9') {
+        const without9 = local.slice(0, 2) + local.slice(3);
+        phoneVariants.push(without9);
+        phoneVariants.push("55" + without9);
+      } else if (local.length === 10) {
+        const with9 = local.slice(0, 2) + '9' + local.slice(2);
+        phoneVariants.push(with9);
+        phoneVariants.push("55" + with9);
+      }
+    }
+    // Deduplica variantes
+    const uniqueVariants = [...new Set(phoneVariants)].filter(v => v.length >= 10);
 
-    for (const variant of phoneVariants) {
+    for (const variant of uniqueVariants) {
       const snap = await guestsRef.where("phone", "==", variant).limit(1).get();
       if (!snap.empty) { matchedDoc = snap.docs[0]; break; }
     }
@@ -267,28 +283,41 @@ export const processZapiWebhook = onDocumentCreated({
 
     if (isFromHotel && zapiMessageId) {
       try {
-        const recentMsgs = await messagesRef.orderBy("createdAt", "desc").limit(20).get();
-        const threeMinutesAgo = Date.now() - 180000;
+        // Verificar se já existe um doc com esse zapiId (previne duplicata absoluta)
+        const existingDoc = await messagesRef.doc(zapiMessageId).get();
+        if (existingDoc.exists) {
+          console.log(`[Webhook Processor] Mensagem ${zapiMessageId} já existe, ignorando.`);
+          await snap.ref.update({ status: "processed_duplicate", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+          return;
+        }
+
+        // Buscar eco: mensagem local enviada pelo CRM que corresponde a este zapiId
+        const recentMsgs = await messagesRef.orderBy("createdAt", "desc").limit(30).get();
+        const fiveMinutesAgo = Date.now() - 300000;
         const ecoMsg = recentMsgs.docs.find(d => {
           const mData = d.data();
           if (mData.sender !== "agent") return false;
+          // Match exato por zapiId (já linkado pelo frontend)
           if (mData.zapiId === zapiMessageId) return true;
+          // Se já tem outro zapiId, não é eco deste
           if (mData.zapiId && mData.zapiId !== zapiMessageId) return false;
-          if (messageType === 'text') {
-            const cleanSource = (mData.text || "").trim();
-            const cleanTarget = (text || "").trim();
-            if (cleanSource !== cleanTarget) return false;
-          } else {
-            if (mData.type !== messageType) return false;
-          }
+          // Match por conteúdo + janela de tempo
           const msgTime = mData.createdAt?.toMillis?.() || 0;
-          return msgTime > threeMinutesAgo || msgTime === 0;
+          const inWindow = msgTime > fiveMinutesAgo || msgTime === 0;
+          if (!inWindow) return false;
+          // Match por texto (para texto) ou tipo (para mídia)
+          if (messageType === 'text') {
+            const cleanSource = (mData.text || "").trim().substring(0, 100);
+            const cleanTarget = (text || "").trim().substring(0, 100);
+            return cleanSource === cleanTarget;
+          }
+          return mData.type === messageType;
         });
 
         if (ecoMsg) {
           await ecoMsg.ref.update({ zapiId: zapiMessageId, status: "delivered" });
-          console.log(`[Webhook Processor] Eco detectado! zapiId atualizado: ${zapiMessageId}`);
-          await snap.ref.update({ status: "processed", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+          console.log(`[Webhook Processor] Eco detectado! zapiId atualizado no doc ${ecoMsg.id}: ${zapiMessageId}`);
+          await snap.ref.update({ status: "processed_echo", processedAt: admin.firestore.FieldValue.serverTimestamp() });
           return;
         }
       } catch (dedupeError) {
