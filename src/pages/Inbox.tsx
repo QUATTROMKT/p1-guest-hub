@@ -411,7 +411,8 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
 
   const filteredGuests = guests.filter(g => {
     if (g.isGroup) return false;
-    const matchesSearch = g.name.toLowerCase().includes(searchTerm.toLowerCase()) || g.phone.includes(searchTerm);
+    const search = searchTerm.toLowerCase();
+    const matchesSearch = g.name.toLowerCase().includes(search) || g.phone.includes(searchTerm) || (g.tags && g.tags.some((t: string) => t.toLowerCase().includes(search)));
     const matchesChatFilter = chatFilter === 'all' || (chatFilter === 'unread' && (g.unreadCount || 0) > 0) || (chatFilter === 'pinned' && g.pinned);
     const matchesStatus = statusFilter === 'all' || g.status === statusFilter;
     return matchesSearch && matchesChatFilter && matchesStatus;
@@ -429,6 +430,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const forwardFilteredGuests = guests.filter(g => !g.isGroup && (g.name.toLowerCase().includes(forwardSearchTerm.toLowerCase()) || g.phone.includes(forwardSearchTerm)));
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'confirmacao_reserva': return 'bg-indigo-600 text-white border-indigo-600';
       case 'reserva': return 'bg-blue-600 text-white border-blue-600';
       case 'cancelada': return 'bg-red-600 text-white border-red-600';
       case 'checkin': return 'bg-emerald-600 text-white border-emerald-600';
@@ -445,6 +447,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const statusOptions = [
     { value: 'all', label: 'Todos' },
     { value: 'lead', label: 'Negociação', color: 'bg-yellow-400' },
+    { value: 'confirmacao_reserva', label: 'Confirm. Reserva', color: 'bg-indigo-500' },
     { value: 'reserva', label: 'Reserva', color: 'bg-blue-500' },
     { value: 'cancelada', label: 'Cancelada', color: 'bg-red-500' },
     { value: 'checkin', label: 'Na Casa', color: 'bg-emerald-500' },
@@ -866,6 +869,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
                     <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-wider">Fase do Hóspede</span>
                     <select value={editData.status || 'lead'} onChange={(e) => handleStatusChange(e.target.value)} className={`w-full p-2 rounded-lg text-sm font-bold border outline-none cursor-pointer text-center dark:bg-slate-800 ${getStatusColor(editData.status || 'lead')}`}>
                       <option value="lead">Em Negociação</option>
+                      <option value="confirmacao_reserva">Confirmação de Reserva</option>
                       <option value="reserva">Reserva Confirmada</option>
                       <option value="cancelada">Reserva Cancelada</option>
                       <option value="checkin">Check-in Realizado</option>

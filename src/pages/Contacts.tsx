@@ -158,6 +158,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                             >
                                 <option value="all">Todos os Status</option>
                                 <option value="lead">Em Negociação</option>
+                                <option value="confirmacao_reserva">Confirmação de Reserva</option>
                                 <option value="reserva">Reserva Confirmada</option>
                                 <option value="cancelada">Reserva Cancelada</option>
                                 <option value="checkin">Hóspede na Casa</option>
@@ -198,7 +199,8 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                                 value={guest.status}
                                                 onChange={(e) => handleUpdateStatus(guest.id, e.target.value)}
                                                 className={`px-2 py-1 rounded-full text-xs font-bold border-none outline-none cursor-pointer appearance-none text-center w-full max-w-[140px]
-                                                    ${guest.status === 'reserva' ? 'bg-blue-100 text-blue-700' :
+                                                    ${guest.status === 'confirmacao_reserva' ? 'bg-indigo-100 text-indigo-700' :
+                                                    guest.status === 'reserva' ? 'bg-blue-100 text-blue-700' :
                                                         guest.status === 'cancelada' ? 'bg-red-100 text-red-700' :
                                                             guest.status === 'checkin' ? 'bg-emerald-100 text-emerald-700' :
                                                                 guest.status === 'previsao_checkout' ? 'bg-orange-100 text-orange-700' :
@@ -208,6 +210,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                                                                 'bg-yellow-100 text-yellow-700'}`}
                                             >
                                                 <option value="lead">Em Negociação</option>
+                                                <option value="confirmacao_reserva">Confirmação de Reserva</option>
                                                 <option value="reserva">Reserva Confirmada</option>
                                                 <option value="cancelada">Reserva Cancelada</option>
                                                 <option value="checkin">Hóspede na Casa</option>

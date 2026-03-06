@@ -11,8 +11,11 @@ export const checkAndTriggerAutomation = async (
 
     // Regras de Automação
     switch (newStatus) {
-        case 'reserva':
+        case 'confirmacao_reserva':
             templateId = 'confirmacao_reserva';
+            break;
+        case 'reserva':
+            templateId = 'reserva_confirmada_msg';
             break;
         case 'checkin':
             templateId = 'checkin_pt'; // Poderia ser lógica pra checkin_es dependendo do telefone (+54...)

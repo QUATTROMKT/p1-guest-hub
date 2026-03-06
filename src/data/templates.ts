@@ -177,6 +177,15 @@ Todos com café da manhã e estacionamento inclusos`
     text: `Rua Olavo Bilac, 365, Nossa Sra de Fatima, Santa Maria RS, 97015-440, Brasil`
   },
   {
+    id: 'reserva_confirmada_msg',
+    title: '✅ Reserva Confirmada',
+    text: `Aqui está a sua confirmação!
+Pedimos que confirme os dados que constam na mesma.
+Estaremos esperando por você(s) na data selecionada.
+Agradecemos a preferência!
+Atenciosamente, Equipe P1!`
+  },
+  {
     id: 'confirmacao_reserva',
     title: '📝 Confirmação de Reserva',
     text: `Para confirmar sua reserva precisamos dos seguintes dados:
