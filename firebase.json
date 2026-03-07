@@ -16,6 +16,10 @@
       ]
     }
   ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "database": "p1hotel"
+  },
   "storage": {
     "rules": "storage.rules"
   }
