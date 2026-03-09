@@ -173,7 +173,11 @@ export const processZapiWebhook = onDocumentCreated({
     const participantName = isGroup ? (body.senderName || "") : "";
 
     const rawLid = body.chatLid || body.participantLid || (body.phone && body.phone.includes("@lid") ? body.phone : "") || "";
-    const lid = normalizePhone(rawLid);
+    let lid = normalizePhone(rawLid);
+    // Se o targetPhone é um LID (>13 dígitos), usá-lo também como lid para busca
+    if (targetPhone.length > 13 && !lid) {
+      lid = targetPhone;
+    }
 
     let guestName = isFromHotel
       ? (body.chatName || "Hóspede (WhatsApp)")
@@ -200,39 +204,66 @@ export const processZapiWebhook = onDocumentCreated({
     // CRÍTICO: Rejeitar LIDs do WhatsApp (números internos longos)
     // LIDs são IDs internos do WhatsApp tipo 206279811873824 (15+ dígitos)
     // Telefones brasileiros reais: 12-13 dígitos com DDI, ou 10-11 sem DDI
+    // PORÉM: mensagens fromMe (hotel) com LID devem ser processadas — buscamos o guest pelo LID
     if (targetPhone.length > 13 && !isGroup) {
-      console.log(`[Webhook Processor] Ignored - LID/internal number detected: ${targetPhone}`);
-      await snap.ref.update({ status: "processed_lid_ignored", processedAt: admin.firestore.FieldValue.serverTimestamp() });
-      return;
+      if (!isFromHotel) {
+        // Mensagem de hóspede com LID: rejeitar (criaria contato fantasma)
+        console.log(`[Webhook Processor] Ignored - LID/internal number from guest: ${targetPhone}`);
+        await snap.ref.update({ status: "processed_lid_ignored", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+        return;
+      }
+      // Mensagem fromMe com LID: usar o LID para encontrar o guest
+      console.log(`[Webhook Processor] fromMe with LID phone ${targetPhone}, attempting LID-based guest lookup...`);
+      // targetPhone é o LID — guardar para busca mas não usar como phone de contato
     }
 
     const guestsRef = db.collection("guests");
     let guestId = "";
     let matchedDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
 
-    // Gerar TODAS as variações possíveis do telefone para matching robusto
-    const phoneVariants: string[] = [targetPhone];
-    if (targetPhone.startsWith("55") && targetPhone.length > 10) phoneVariants.push(targetPhone.substring(2));
-    if (!targetPhone.startsWith("55") && targetPhone.length >= 10) phoneVariants.push("55" + targetPhone);
-    // Variantes com/sem 9º dígito (celulares BR)
-    for (const base of [...phoneVariants]) {
-      const local = base.startsWith("55") && base.length > 10 ? base.substring(2) : base;
-      if (local.length === 11 && local[2] === '9') {
-        const without9 = local.slice(0, 2) + local.slice(3);
-        phoneVariants.push(without9);
-        phoneVariants.push("55" + without9);
-      } else if (local.length === 10) {
-        const with9 = local.slice(0, 2) + '9' + local.slice(2);
-        phoneVariants.push(with9);
-        phoneVariants.push("55" + with9);
+    // Para fromMe com LID, tentar LID lookup PRIMEIRO (phone variants não vão funcionar)
+    const isLidPhone = targetPhone.length > 13;
+    if (isFromHotel && isLidPhone && lid.length > 5) {
+      console.log(`[Webhook Processor] fromMe LID: trying LID-based lookup first with lid=${lid}`);
+      const snapLid = await guestsRef.where("lid", "==", lid).get();
+      const goodGuest = snapLid.docs.find(d => {
+        const p = d.data().phone || "";
+        return p.startsWith("55") && p.length >= 10 && p.length <= 13;
+      });
+      if (goodGuest) {
+        matchedDoc = goodGuest;
+        console.log(`[Webhook Processor] fromMe LID: found guest by LID: ${goodGuest.data().name} (${goodGuest.data().phone})`);
+      } else if (snapLid.docs.length > 0) {
+        matchedDoc = snapLid.docs[0];
+        console.log(`[Webhook Processor] fromMe LID: found guest by LID (fallback): ${snapLid.docs[0].data().name}`);
       }
     }
-    // Deduplica variantes
-    const uniqueVariants = [...new Set(phoneVariants)].filter(v => v.length >= 10);
 
-    for (const variant of uniqueVariants) {
-      const snap = await guestsRef.where("phone", "==", variant).limit(1).get();
-      if (!snap.empty) { matchedDoc = snap.docs[0]; break; }
+    // Buscar por variantes de telefone (pula se já encontrou por LID)
+    if (!matchedDoc && !isLidPhone) {
+      // Gerar TODAS as variações possíveis do telefone para matching robusto
+      const phoneVariants: string[] = [targetPhone];
+      if (targetPhone.startsWith("55") && targetPhone.length > 10) phoneVariants.push(targetPhone.substring(2));
+      if (!targetPhone.startsWith("55") && targetPhone.length >= 10) phoneVariants.push("55" + targetPhone);
+      // Variantes com/sem 9º dígito (celulares BR)
+      for (const base of [...phoneVariants]) {
+        const local = base.startsWith("55") && base.length > 10 ? base.substring(2) : base;
+        if (local.length === 11 && local[2] === '9') {
+          const without9 = local.slice(0, 2) + local.slice(3);
+          phoneVariants.push(without9);
+          phoneVariants.push("55" + without9);
+        } else if (local.length === 10) {
+          const with9 = local.slice(0, 2) + '9' + local.slice(2);
+          phoneVariants.push(with9);
+          phoneVariants.push("55" + with9);
+        }
+      }
+      const uniqueVariants = [...new Set(phoneVariants)].filter(v => v.length >= 10);
+
+      for (const variant of uniqueVariants) {
+        const snap = await guestsRef.where("phone", "==", variant).limit(1).get();
+        if (!snap.empty) { matchedDoc = snap.docs[0]; break; }
+      }
     }
 
     const matchedIsBad = matchedDoc && (matchedDoc.data().phone.length > 14 || !matchedDoc.data().phone.startsWith("55"));
@@ -249,6 +280,12 @@ export const processZapiWebhook = onDocumentCreated({
     // REMOVIDA BUSCA MASSIVA DO BANCO (`await guestsRef.get()`) AQUÍ.
 
     if (!matchedDoc) {
+      // Para fromMe com LID: NÃO criar contato fantasma — só logar e skippar
+      if (isFromHotel && isLidPhone) {
+        console.log(`[Webhook Processor] fromMe LID: no guest found for LID ${targetPhone}, skipping (won't create phantom)`);
+        await snap.ref.update({ status: "processed_fromme_no_match", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+        return;
+      }
       guestId = getDeterministicId(targetPhone) || targetPhone;
       await guestsRef.doc(guestId).set({
         name: guestName, phone: targetPhone, lid: lid,
