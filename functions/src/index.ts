@@ -277,8 +277,22 @@ export const processZapiWebhook = onDocumentCreated({
       else if (!matchedDoc && snapLid.docs.length > 0) matchedDoc = snapLid.docs[0];
     }
 
-    // REMOVIDA BUSCA MASSIVA DO BANCO (`await guestsRef.get()`) AQUÍ.
-
+    // FALLBACK DE AUTO-CURA (Auto-healing)
+    // Se a busca rápida por índice falhou, faz a busca massiva para resgatar hóspedes antigos
+    // com telefones despadronizados. Como o código posterior atualiza o doc para o telefone limpo,
+    // esta busca pesada só ocorrerá UMA vez por hóspede legado, tornando o banco auto-curável.
+    if (!matchedDoc) {
+      console.log(`[Webhook Processor] Fallback: Iniciando busca massiva para resgatar hóspede: ${targetPhone}`);
+      const allGuestsSnap = await guestsRef.get();
+      const fallbackGuest = allGuestsSnap.docs.find(d => {
+        const stored = d.data().phone || "";
+        return phonesMatch(stored, targetPhone);
+      });
+      if (fallbackGuest) {
+        matchedDoc = fallbackGuest;
+        console.log(`[Webhook Processor] Fallback bem sucedido! Hóspede resgatado: ${fallbackGuest.id}`);
+      }
+    }
     if (!matchedDoc) {
       // Para fromMe com LID: NÃO criar contato fantasma — só logar e skippar
       if (isFromHotel && isLidPhone) {
