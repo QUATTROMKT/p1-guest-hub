@@ -1,0 +1,11 @@
+Fala Cadu! 
+
+Descobri a falha exata nas imagens que voce mandou. O balao "Mensagem Recebida" cinza estava aparecendo justamente quando a recepcao mandava mensagem, porque o WhatsApp devolve um aviso de "presenca/digitando" e um aviso de "entregue", porem o codigo antigo so ignorava esses avisos se viessem do hospede. Se o aviso fosse da recepcao, ele vazava pro sistema e criava um balao fantasma cinza.
+
+Acabei de mudar radicalmente o filtro de ignorar eventos no `index.ts`. Agora ele bloqueia *qualquer* aviso de presenca, digitando, ou entrega, seja do hospede ou da recepcao. O sistema so vai gerar mensagem se tiver *texto* de verdade!
+
+Para subir essa trava de seguranca definitiva, mande de novo a nossa bala de prata no terminal:
+
+. "$HOME/.nvm/nvm.sh" && cd functions && npm install && cd .. && npx firebase-tools deploy --only functions
+
+(Deixei o 'npm install' no meio por seguranca caso feche o terminal). Pode mandar ver, isso vai matar o bug de vez!

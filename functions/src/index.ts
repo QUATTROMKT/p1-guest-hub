@@ -66,8 +66,18 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     // que NÃO contêm conteúdo de mensagem
     const hasContent = body.text || body.image || body.audio || body.video || body.document 
       || body.imageUrl || body.audioUrl || body.videoUrl || body.documentUrl 
-      || body.sticker || body.location || body.messageId;
-    const isStatusEvent = (body.status && !body.fromMe && !hasContent) || (body.connectedPhone && !hasContent);
+      || body.sticker || body.location || body.vcard || body.contactsArray
+      || body.messageId;
+
+    // Ignora APENAS eventos sem conteúdo real de mensagem.
+    // CRÍTICO: NÃO bloquear eventos com body.status (ex: "SENT") ou body.connectedPhone
+    // quando há conteúdo — senão ecos de fromMe (notify-sent-by-me) são descartados.
+    const isStatusEvent = (body.status && !body.fromMe && !hasContent)
+      || (body.connectedPhone && !hasContent)
+      || body.type === 'protocol' || body.type === 'e2e_notification'
+      || (body.presence && !hasContent)
+      || (body.action && !hasContent);
+
     if (isStatusEvent) {
       res.status(200).send("Ignored (Status/Connection Event)");
       return;
@@ -106,11 +116,19 @@ export const processZapiWebhook = onDocumentCreated({
     // Ignorar eventos de status puro (delivery ack, read receipts, connection events)
     const hasContent = body.text || body.image || body.audio || body.video || body.document
       || body.imageUrl || body.audioUrl || body.videoUrl || body.documentUrl
-      || body.sticker || body.location || body.messageId;
-    const isStatusEvent = (body.status && !body.fromMe && !hasContent) || (body.connectedPhone && !hasContent);
+      || body.sticker || body.location || body.vcard || body.contactsArray
+      || body.messageId;
+
+    // Ignora APENAS eventos sem conteúdo real de mensagem (mesma lógica do HTTP handler)
+    const isStatusEvent = (body.status && !body.fromMe && !hasContent)
+      || (body.connectedPhone && !hasContent)
+      || body.type === 'protocol' || body.type === 'e2e_notification'
+      || (body.presence && !hasContent)
+      || (body.action && !hasContent);
+
     if (isStatusEvent) {
-      console.log(`[Webhook Processor] Ignored status/connection event ${eventId}`);
-      await snap.ref.update({ status: "processed_status_event", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+      console.log(`[Webhook Processor] Ignored status/presence event ${eventId}`);
+      await snap.ref.update({ status: "processed_ignored_event", processedAt: admin.firestore.FieldValue.serverTimestamp() });
       return;
     }
 
