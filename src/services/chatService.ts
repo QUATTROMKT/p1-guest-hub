@@ -22,7 +22,7 @@ const ZAPI_TOKEN = import.meta.env.VITE_ZAPI_TOKEN;
 const ZAPI_CLIENT_TOKEN = import.meta.env.VITE_ZAPI_CLIENT_TOKEN;
 
 export const subscribeToGuests = (cb: (data: any[]) => void) => {
-  const q = query(collection(db, "guests"), orderBy("lastMessageTime", "desc"), limit(3000));
+  const q = query(collection(db, "guests"), orderBy("lastMessageTime", "desc"), limit(500));
   return onSnapshot(q, (snap) => {
     const guests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     cb(guests);
@@ -32,9 +32,9 @@ export const subscribeToGuests = (cb: (data: any[]) => void) => {
 };
 
 export const subscribeToMessages = (guestId: string, cb: (data: any[]) => void) => {
-  const q = query(collection(db, "guests", guestId, "messages"), orderBy("createdAt", "asc"));
+  const q = query(collection(db, "guests", guestId, "messages"), orderBy("createdAt", "desc"), limit(200));
   return onSnapshot(q, (snap) => {
-    const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const messages = snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse();
     cb(messages);
   }, (error) => {
     console.error('[chatService] subscribeToMessages error for guest', guestId, ':', error);

@@ -66,8 +66,7 @@ export const zapiWebhook = functions.https.onRequest(async (req, res) => {
     // que NÃO contêm conteúdo de mensagem
     const hasContent = body.text || body.image || body.audio || body.video || body.document 
       || body.imageUrl || body.audioUrl || body.videoUrl || body.documentUrl 
-      || body.sticker || body.location || body.vcard || body.contactsArray
-      || body.messageId;
+      || body.sticker || body.location || body.vcard || body.contactsArray;
 
     // Ignora APENAS eventos sem conteúdo real de mensagem.
     // CRÍTICO: NÃO bloquear eventos com body.status (ex: "SENT") ou body.connectedPhone
@@ -116,8 +115,7 @@ export const processZapiWebhook = onDocumentCreated({
     // Ignorar eventos de status puro (delivery ack, read receipts, connection events)
     const hasContent = body.text || body.image || body.audio || body.video || body.document
       || body.imageUrl || body.audioUrl || body.videoUrl || body.documentUrl
-      || body.sticker || body.location || body.vcard || body.contactsArray
-      || body.messageId;
+      || body.sticker || body.location || body.vcard || body.contactsArray;
 
     // Ignora APENAS eventos sem conteúdo real de mensagem (mesma lógica do HTTP handler)
     const isStatusEvent = (body.status && !body.fromMe && !hasContent)
@@ -132,7 +130,7 @@ export const processZapiWebhook = onDocumentCreated({
       return;
     }
 
-    const isFromHotel = body.fromMe === true;
+    const isFromHotel = body.fromMe === true || body.fromApi === true;
     const senderType = isFromHotel ? "agent" : "guest";
 
     let mediaUrl = "";
@@ -295,14 +293,13 @@ export const processZapiWebhook = onDocumentCreated({
       else if (!matchedDoc && snapLid.docs.length > 0) matchedDoc = snapLid.docs[0];
     }
 
-    // FALLBACK DE AUTO-CURA (Auto-healing)
-    // Se a busca rápida por índice falhou, faz a busca massiva para resgatar hóspedes antigos
-    // com telefones despadronizados. Como o código posterior atualiza o doc para o telefone limpo,
-    // esta busca pesada só ocorrerá UMA vez por hóspede legado, tornando o banco auto-curável.
+    // FALLBACK DE AUTO-CURA (Auto-healing) — LIMITADO para performance
+    // Busca nos últimos 100 hóspedes ativos para resgatar telefones despadronizados.
+    // Limitamos para evitar carregar centenas/milhares de docs a cada webhook.
     if (!matchedDoc) {
-      console.log(`[Webhook Processor] Fallback: Iniciando busca massiva para resgatar hóspede: ${targetPhone}`);
-      const allGuestsSnap = await guestsRef.get();
-      const fallbackGuest = allGuestsSnap.docs.find(d => {
+      console.log(`[Webhook Processor] Fallback: busca limitada (100 docs) para hóspede: ${targetPhone}`);
+      const recentGuestsSnap = await guestsRef.orderBy("lastMessageTime", "desc").limit(100).get();
+      const fallbackGuest = recentGuestsSnap.docs.find(d => {
         const stored = d.data().phone || "";
         return phonesMatch(stored, targetPhone);
       });
@@ -392,6 +389,22 @@ export const processZapiWebhook = onDocumentCreated({
       } catch (dedupeError) {
         console.warn("[Webhook Processor] Deduplicação falhou, salvando normalmente:", dedupeError);
       }
+
+      // Se chegou aqui, é mensagem do hotel (fromMe/fromApi) que NÃO foi detectada como eco.
+      // O frontend já salvou esta mensagem no Firestore — salvar novamente criaria duplicata.
+      console.log(`[Webhook Processor] fromMe/fromApi msg sem eco correspondente, ignorando para evitar duplicata: ${zapiMessageId}`);
+      await snap.ref.update({ status: "processed_sent_no_echo", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return;
+    }
+
+    // GUARDA FINAL: Nunca salvar "mensagem" sem conteúdo real.
+    // Se o texto ainda é o fallback "Mensagem Recebida" e não há mídia,
+    // este evento NÃO é uma mensagem real — é um callback de status/sistema
+    // que passou por todos os filtros. Descartar para evitar fantasma.
+    if (text === "Mensagem Recebida" && !mediaUrl) {
+      console.log(`[Webhook Processor] BLOCKED phantom: no real content extracted for event ${eventId}. Payload type=${body.type}, fromMe=${body.fromMe}, fromApi=${body.fromApi}, status=${body.status}`);
+      await snap.ref.update({ status: "processed_no_content", processedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return;
     }
 
     const docId = zapiMessageId || `internal_${Date.now()}`;
