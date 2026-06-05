@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getAuth } from 'firebase/auth';
 import { Search, Phone, MessageSquare, Trash2, Plus, Filter, Pencil } from 'lucide-react';
 import { subscribeToGuests, deleteGuest, createGuest, updateGuest } from '../services/chatService';
@@ -28,6 +28,14 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
     const [newContact, setNewContact] = useState({ name: '', phone: '', email: '', cpf: '' });
     const [isLoading, setIsLoading] = useState(false);
 
+    // Paginação para evitar sobrecarregar o DOM com milhares de registros
+    const [visibleContactsCount, setVisibleContactsCount] = useState(50);
+
+    // Reset pagination when search or filter changes
+    useEffect(() => {
+        setVisibleContactsCount(50);
+    }, [searchTerm, statusFilter]);
+
     useEffect(() => {
         const unsubscribe = subscribeToGuests((data: any[]) => {
             setGuests((data as Guest[]).filter(g => !g.isGroup));
@@ -35,12 +43,18 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
         return () => unsubscribe();
     }, []);
 
-    const filteredGuests = guests.filter(g => {
-        const search = searchTerm.toLowerCase();
-        const matchesSearch = g.name.toLowerCase().includes(search) || g.phone.includes(searchTerm) || (g.tags && g.tags.some(t => t.toLowerCase().includes(search)));
-        const matchesStatus = statusFilter === 'all' || g.status === statusFilter;
-        return matchesSearch && matchesStatus;
-    });
+    const filteredGuests = useMemo(() => {
+        return guests.filter(g => {
+            const search = searchTerm.toLowerCase();
+            const matchesSearch = g.name.toLowerCase().includes(search) || g.phone.includes(searchTerm) || (g.tags && g.tags.some(t => t.toLowerCase().includes(search)));
+            const matchesStatus = statusFilter === 'all' || g.status === statusFilter;
+            return matchesSearch && matchesStatus;
+        });
+    }, [guests, searchTerm, statusFilter]);
+
+    const displayedGuests = useMemo(() => {
+        return filteredGuests.slice(0, visibleContactsCount);
+    }, [filteredGuests, visibleContactsCount]);
 
     const handleCreateContact = async (e: React.FormEvent) => {
         const auth = getAuth();
@@ -184,7 +198,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                                {filteredGuests.map(guest => (
+                                {displayedGuests.map(guest => (
                                     <tr key={guest.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                                         <td className="p-4">
                                             <div className="flex items-center gap-3" title={`Criado por: ${guest.createdBy || 'Sistema'}\nAtualizado por: ${guest.lastUpdatedBy || '-'}`}>
@@ -263,7 +277,7 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                                         </td>
                                     </tr>
                                 ))}
-                                {filteredGuests.length === 0 && (
+                                {displayedGuests.length === 0 && (
                                     <tr>
                                         <td colSpan={5} className="p-8 text-center text-slate-400">
                                             Nenhum contato encontrado.
@@ -274,8 +288,19 @@ export default function Contacts({ onNavigateChat }: ContactsProps) {
                         </table>
                     </div>
 
+                    {filteredGuests.length > visibleContactsCount && (
+                        <div className="p-4 text-center border-t border-slate-100 dark:border-slate-700">
+                            <button
+                                type="button"
+                                onClick={() => setVisibleContactsCount(prev => prev + 50)}
+                                className="text-sm font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                            >
+                                Carregar mais ({filteredGuests.length - visibleContactsCount} contatos restantes)
+                            </button>
+                        </div>
+                    )}
                     <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-400 text-center">
-                        Exibindo {filteredGuests.length} de {guests.length} contatos
+                        Exibindo {Math.min(visibleContactsCount, filteredGuests.length)} de {filteredGuests.length} contatos filtrados (Total: {guests.length})
                     </div>
                 </div>
             </div>

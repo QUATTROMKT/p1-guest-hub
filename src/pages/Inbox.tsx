@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Send, Phone, Tag, User, Plus, X, CreditCard, Save, Trash2, Paperclip, FileText, MapPin, ClipboardList, MessageSquare, Zap, Image as ImageIcon, Film, Shield, Forward, ChevronRight, Pin, Edit2, Check } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
 // Importamos a nova função markAsRead e services
@@ -35,18 +35,24 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const [guests, setGuests] = useState<Guest[]>([]);
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'pinned'>('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [newTag, setNewTag] = useState('');
   const [localNote, setLocalNote] = useState('');
-  const [showTemplates, setShowTemplates] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'media'>('details');
   const [editData, setEditData] = useState<Partial<Guest>>({});
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [forwardSearchTerm, setForwardSearchTerm] = useState('');
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+
+  // Paginacao/Limitação de itens renderizados no DOM para performance
+  const [visibleGuestsCount, setVisibleGuestsCount] = useState(50);
+
+  // Reset pagination when filter changes
+  useEffect(() => {
+    setVisibleGuestsCount(50);
+  }, [searchTerm, chatFilter, statusFilter]);
 
   // States para Preview de Mídia antes de Enviar
   const [pendingMedia, setPendingMedia] = useState<{ file: File, url: string, type: 'image' | 'video' | 'audio' | 'document' } | null>(null);
@@ -60,18 +66,9 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
   const agentName = getAgentName(auth.currentUser);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Auto-resize textarea quando newMessage muda (cobre templates selecionados)
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '40px';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
-    }
-  }, [newMessage]);
 
   // Ref para guardar referência do guest selecionado
   const selectedGuestRef = useRef<Guest | null>(null);
@@ -155,64 +152,31 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     await updateGuest(guest.id, { pinned: newPinnedStatus });
   };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedGuest) return;
-    const textToSend = newMessage;
-    setNewMessage('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '40px';
-    }
+  const handleSendMessage = async (textToSend: string) => {
+    if (!selectedGuest) return;
     await sendMessage(selectedGuest.id, selectedGuest.phone, textToSend, 'text', '', agentName);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  const handleUploadFileDirect = async (file: File, type: 'audio' | 'document') => {
+    if (!selectedGuest) return;
+    try {
+      const url = await uploadFile(file);
+      await sendMessage(selectedGuest.id, selectedGuest.phone, file.name, type, url, agentName);
+    } catch (error: any) {
+      console.error("Erro ao enviar arquivo:", error);
+      const errorMsg = error?.code === 'storage/unauthorized'
+        ? 'Sem permissão para upload. Verifique se está logado.'
+        : error?.message?.includes('CORS') || error?.message?.includes('Failed to fetch')
+          ? 'Erro de CORS no Storage. O administrador precisa configurar CORS no Firebase Storage.'
+          : `Erro ao enviar arquivo: ${error?.message || 'Verifique o console.'}`;
+      alert(errorMsg);
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0] || !selectedGuest) return;
-    const file = e.target.files[0];
-
-    // Limit: 50MB
-    if (file.size > 50 * 1024 * 1024) {
-      alert('Arquivo muito grande. Limite: 50MB');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
-    // Determinar tipo
-    let type: 'image' | 'video' | 'audio' | 'document' = 'document';
-    if (file.type.startsWith('image/')) type = 'image';
-    else if (file.type.startsWith('audio/')) type = 'audio';
-    else if (file.type.startsWith('video/')) type = 'video';
-
-    // Cria URL local preview e abre o modal (se for imagem ou video, senao manda direto ou pode aplicar regra igual)
-    if (type === 'image' || type === 'video') {
-      const localUrl = URL.createObjectURL(file);
-      setPendingMedia({ file, url: localUrl, type });
-      setMediaCaption('');
-      // Limpa input
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    } else {
-      // Audio e docs vão direto como antes
-      try {
-        const url = await uploadFile(file);
-        await sendMessage(selectedGuest.id, selectedGuest.phone, file.name, type, url, agentName);
-      } catch (error: any) {
-        console.error("Erro ao enviar arquivo:", error);
-        const errorMsg = error?.code === 'storage/unauthorized'
-          ? 'Sem permissão para upload. Verifique se está logado.'
-          : error?.message?.includes('CORS') || error?.message?.includes('Failed to fetch')
-            ? 'Erro de CORS no Storage. O administrador precisa configurar CORS no Firebase Storage.'
-            : `Erro ao enviar arquivo: ${error?.message || 'Verifique o console.'}`;
-        alert(errorMsg);
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    }
+  const handleSelectMediaPreview = (file: File, type: 'image' | 'video') => {
+    const localUrl = URL.createObjectURL(file);
+    setPendingMedia({ file, url: localUrl, type });
+    setMediaCaption('');
   };
 
   const handleConfirmMediaSend = async () => {
@@ -220,14 +184,12 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
 
     try {
       const url = await uploadFile(pendingMedia.file);
-      // Se tiver caption usa ela, senao vai sem texto extra ou o nome
-      let captionText = mediaCaption.trim();
+      const captionText = mediaCaption.trim();
       await sendMessage(selectedGuest.id, selectedGuest.phone, captionText, pendingMedia.type, url, agentName);
     } catch (error) {
       console.error("Erro ao subir midia pendente:", error);
       alert("Erro ao enviar mídia.");
     } finally {
-      // Limpeza de estado
       if (pendingMedia.url) URL.revokeObjectURL(pendingMedia.url);
       setPendingMedia(null);
       setMediaCaption('');
@@ -238,27 +200,6 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     if (pendingMedia?.url) URL.revokeObjectURL(pendingMedia.url);
     setPendingMedia(null);
     setMediaCaption('');
-  };
-
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const items = e.clipboardData.items;
-    let imageItem = null;
-
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        imageItem = items[i];
-        break;
-      }
-    }
-
-    if (imageItem && selectedGuest) {
-      const file = imageItem.getAsFile();
-      if (!file) return;
-
-      const localUrl = URL.createObjectURL(file);
-      setPendingMedia({ file, url: localUrl, type: 'image' });
-      setMediaCaption('');
-    }
   };
 
   // Funções de Editar e Apagar Mensagens
@@ -370,7 +311,6 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     if (!selectedGuest) return;
     if (localNote !== selectedGuest.notes) { await updateGuest(selectedGuest.id, { notes: localNote, lastUpdatedBy: agentName }); }
   };
-  const handleSelectTemplate = (text: string) => { setNewMessage(text); setShowTemplates(false); };
 
   const handleForwardMessage = async (targetGuest: Guest) => {
     if (!forwardingMessage) return;
@@ -409,23 +349,32 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     return date.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: '2-digit' });
   };
 
-  const filteredGuests = guests.filter(g => {
-    if (g.isGroup) return false;
-    const search = searchTerm.toLowerCase();
-    const matchesSearch = g.name.toLowerCase().includes(search) || g.phone.includes(searchTerm) || (g.tags && g.tags.some((t: string) => t.toLowerCase().includes(search)));
-    const matchesChatFilter = chatFilter === 'all' || (chatFilter === 'unread' && (g.unreadCount || 0) > 0) || (chatFilter === 'pinned' && g.pinned);
-    const matchesStatus = statusFilter === 'all' || g.status === statusFilter;
-    return matchesSearch && matchesChatFilter && matchesStatus;
-  });
+  const filteredGuests = useMemo(() => {
+    return guests.filter(g => {
+      if (g.isGroup) return false;
+      const search = searchTerm.toLowerCase();
+      const matchesSearch = g.name.toLowerCase().includes(search) || g.phone.includes(searchTerm) || (g.tags && g.tags.some((t: string) => t.toLowerCase().includes(search)));
+      const matchesChatFilter = chatFilter === 'all' || (chatFilter === 'unread' && (g.unreadCount || 0) > 0) || (chatFilter === 'pinned' && g.pinned);
+      const matchesStatus = statusFilter === 'all' || g.status === statusFilter;
+      return matchesSearch && matchesChatFilter && matchesStatus;
+    });
+  }, [guests, searchTerm, chatFilter, statusFilter]);
 
   // Sort guests: Pinned first, then by lastMessageTime
-  const sortedGuests = [...filteredGuests].sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    const timeA = a.lastMessageTime?.seconds || 0;
-    const timeB = b.lastMessageTime?.seconds || 0;
-    return timeB - timeA;
-  });
+  const sortedGuests = useMemo(() => {
+    return [...filteredGuests].sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      const timeA = a.lastMessageTime?.seconds || 0;
+      const timeB = b.lastMessageTime?.seconds || 0;
+      return timeB - timeA;
+    });
+  }, [filteredGuests]);
+
+  // Limitar renderização no DOM para performance
+  const displayedGuests = useMemo(() => {
+    return sortedGuests.slice(0, visibleGuestsCount);
+  }, [sortedGuests, visibleGuestsCount]);
 
   const forwardFilteredGuests = guests.filter(g => !g.isGroup && (g.name.toLowerCase().includes(forwardSearchTerm.toLowerCase()) || g.phone.includes(forwardSearchTerm)));
   const getStatusColor = (status: string) => {
@@ -467,25 +416,27 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
     return 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-transparent';
   };
 
-  const mediaMessages = messages.filter(m => ['image', 'video', 'document'].includes(m.type));
+  const mediaMessages = useMemo(() => {
+    return messages.filter(m => ['image', 'video', 'document'].includes(m.type));
+  }, [messages]);
 
   // GARANTIR ORDEM EXATA DAS MENSAGENS:
   // Como o Firebase manda pra gente, vamos dar um sort duplo pra ter certeza absoluta
-  const sortedMessages = [...messages].sort((a, b) => {
-    const timeA = a.createdAt?.seconds || 0;
-    const timeB = b.createdAt?.seconds || 0;
-    if (timeA === timeB) {
-      // Desempate por nanosegundos se existir
-      const nanoA = a.createdAt?.nanoseconds || 0;
-      const nanoB = b.createdAt?.nanoseconds || 0;
-      if (nanoA === nanoB) {
-        // Desempate final pelo localDocId ou default alfabético para forçar constância
-        return a.id.localeCompare(b.id);
+  const sortedMessages = useMemo(() => {
+    return [...messages].sort((a, b) => {
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      if (timeA === timeB) {
+        const nanoA = a.createdAt?.nanoseconds || 0;
+        const nanoB = b.createdAt?.nanoseconds || 0;
+        if (nanoA === nanoB) {
+          return a.id.localeCompare(b.id);
+        }
+        return nanoA - nanoB;
       }
-      return nanoA - nanoB;
-    }
-    return timeA - timeB;
-  });
+      return timeA - timeB;
+    });
+  }, [messages]);
 
   return (
     <div className="flex h-full w-full bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
@@ -538,7 +489,7 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {sortedGuests.map(guest => (
+          {displayedGuests.map(guest => (
             <div
               key={guest.id}
               onClick={() => handleSelectGuest(guest)}
@@ -575,6 +526,16 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
               </div>
             </div>
           ))}
+          {sortedGuests.length > visibleGuestsCount && (
+            <div className="p-3 text-center">
+              <button
+                onClick={() => setVisibleGuestsCount(prev => prev + 50)}
+                className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline animate-pulse"
+              >
+                Carregar mais ({sortedGuests.length - visibleGuestsCount} restantes)
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -776,60 +737,11 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
 
             {/* INPUT AREA */}
             <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 w-full flex-shrink-0">
-              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded-xl border border-slate-200 dark:border-slate-600 focus-within:ring-2 ring-emerald-500 transition-all relative">
-                {showTemplates && (
-                  <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 max-h-80 overflow-y-auto z-50">
-                    <div className="p-3 border-b border-slate-100 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wider">
-                      Mensagens Rápidas
-                    </div>
-                    {messageTemplates.map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => handleSelectTemplate(t.text)}
-                        className="w-full text-left p-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 transition-colors border-b border-slate-50 dark:border-slate-700/50 last:border-0"
-                      >
-                        <span className="font-bold block text-xs mb-1">{t.title}</span>
-                        <span className="text-[10px] opacity-70 line-clamp-2">{t.text}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <button
-                  onClick={() => setShowTemplates(!showTemplates)}
-                  className={`p-2 rounded-lg transition-colors ${showTemplates ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400 dark:text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-600'}`}
-                  title="Mensagens Rápidas"
-                >
-                  <Zap size={20} />
-                </button>
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 dark:text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-600 rounded-lg transition-colors">
-                  <Paperclip size={20} />
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={handleFileUpload}
-                  accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.ppt,.pptx,.zip,.rar"
-                />
-                <textarea
-                  ref={textareaRef}
-                  value={newMessage}
-                  onChange={e => {
-                    setNewMessage(e.target.value);
-                    e.target.style.height = 'inherit';
-                    e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
-                  }}
-                  onKeyDown={handleKeyPress}
-                  onPaste={handlePaste}
-                  placeholder="Digite sua mensagem..."
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-none py-2 overflow-y-auto"
-                  rows={1}
-                  style={{ height: '40px', minHeight: '40px', maxHeight: '200px' }}
-                />
-                <button onClick={handleSendMessage} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-md transition-transform active:scale-95">
-                  <Send size={20} />
-                </button>
-              </div>
+              <ChatInput
+                onSendMessage={handleSendMessage}
+                onUploadFileDirect={handleUploadFileDirect}
+                onSelectMediaPreview={handleSelectMediaPreview}
+              />
             </div>
           </>
         )}
@@ -1084,5 +996,149 @@ export default function Inbox({ initialGuestId, onInitialGuestHandled }: InboxPr
         </div>
       )}
     </div >
+  );
+}
+
+interface ChatInputProps {
+  onSendMessage: (text: string) => Promise<void>;
+  onUploadFileDirect: (file: File, type: 'audio' | 'document') => Promise<void>;
+  onSelectMediaPreview: (file: File, type: 'image' | 'video') => void;
+}
+
+function ChatInput({ onSendMessage, onUploadFileDirect, onSelectMediaPreview }: ChatInputProps) {
+  const [newMessage, setNewMessage] = useState('');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '40px';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  }, [newMessage]);
+
+  const handleSend = async () => {
+    if (!newMessage.trim()) return;
+    const text = newMessage;
+    setNewMessage('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '40px';
+    }
+    await onSendMessage(text);
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Arquivo muito grande. Limite: 50MB');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    let type: 'image' | 'video' | 'audio' | 'document' = 'document';
+    if (file.type.startsWith('image/')) type = 'image';
+    else if (file.type.startsWith('audio/')) type = 'audio';
+    else if (file.type.startsWith('video/')) type = 'video';
+
+    if (type === 'image' || type === 'video') {
+      onSelectMediaPreview(file, type);
+    } else {
+      await onUploadFileDirect(file, type);
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    let imageItem = null;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        imageItem = items[i];
+        break;
+      }
+    }
+
+    if (imageItem) {
+      const file = imageItem.getAsFile();
+      if (file) {
+        onSelectMediaPreview(file, 'image');
+      }
+    }
+  };
+
+  const handleSelectTemplate = (text: string) => {
+    setNewMessage(text);
+    setShowTemplates(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-2 rounded-xl border border-slate-200 dark:border-slate-600 focus-within:ring-2 ring-emerald-500 transition-all relative">
+      {showTemplates && (
+        <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 max-h-80 overflow-y-auto z-50">
+          <div className="p-3 border-b border-slate-100 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wider">
+            Mensagens Rápidas
+          </div>
+          {messageTemplates.map(t => (
+            <button
+              key={t.id}
+              onClick={() => handleSelectTemplate(t.text)}
+              className="w-full text-left p-3 text-sm text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 transition-colors border-b border-slate-50 dark:border-slate-700/50 last:border-0"
+            >
+              <span className="font-bold block text-xs mb-1">{t.title}</span>
+              <span className="text-[10px] opacity-70 line-clamp-2">{t.text}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        onClick={() => setShowTemplates(!showTemplates)}
+        className={`p-2 rounded-lg transition-colors ${showTemplates ? 'bg-emerald-100 text-emerald-600' : 'text-slate-400 dark:text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-600'}`}
+        title="Mensagens Rápidas"
+      >
+        <Zap size={20} />
+      </button>
+      <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 dark:text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-600 rounded-lg transition-colors">
+        <Paperclip size={20} />
+      </button>
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={handleFileUpload}
+        accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.ppt,.pptx,.zip,.rar"
+      />
+      <textarea
+        ref={textareaRef}
+        value={newMessage}
+        onChange={e => {
+          setNewMessage(e.target.value);
+          e.target.style.height = 'inherit';
+          e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+        }}
+        onKeyDown={handleKeyPress}
+        onPaste={handlePaste}
+        placeholder="Digite sua mensagem..."
+        className="flex-1 bg-transparent border-none focus:ring-0 text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-none py-2 overflow-y-auto"
+        rows={1}
+        style={{ height: '40px', minHeight: '40px', maxHeight: '200px' }}
+      />
+      <button onClick={handleSend} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-md transition-transform active:scale-95">
+        <Send size={20} />
+      </button>
+    </div>
   );
 }
