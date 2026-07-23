@@ -83,7 +83,12 @@ export const sendMessage = async (
 
   // 2. MANDA PRO WHATSAPP
   try {
-    const cleanPhone = phone.replace(/\D/g, '');
+    let cleanPhone = phone.replace(/\D/g, '');
+    // Auto-completar DDI 55 para números BR (10 ou 11 dígitos sem DDI)
+    if (!cleanPhone.startsWith('55') && (cleanPhone.length === 10 || cleanPhone.length === 11)) {
+      cleanPhone = '55' + cleanPhone;
+    }
+    
     let url = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`;
     let body: any = { phone: cleanPhone, message: text };
 
