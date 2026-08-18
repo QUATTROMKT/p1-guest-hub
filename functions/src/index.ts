@@ -387,14 +387,13 @@ export const processZapiWebhook = onDocumentCreated({
           return;
         }
       } catch (dedupeError) {
-        console.warn("[Webhook Processor] Deduplicação falhou, salvando normalmente:", dedupeError);
+        console.warn("[Webhook Processor] Deduplicação falhou:", dedupeError);
       }
 
-      // Se chegou aqui, é mensagem do hotel (fromMe/fromApi) que NÃO foi detectada como eco.
-      // O frontend já salvou esta mensagem no Firestore — salvar novamente criaria duplicata.
-      console.log(`[Webhook Processor] fromMe/fromApi msg sem eco correspondente, ignorando para evitar duplicata: ${zapiMessageId}`);
-      await snap.ref.update({ status: "processed_sent_no_echo", processedAt: admin.firestore.FieldValue.serverTimestamp() });
-      return;
+      // Se NÃO foi detectado como eco de mensagem enviada pelo CRM, significa que
+      // a mensagem foi enviada diretamente pelo WhatsApp oficial (celular ou WhatsApp Web).
+      // Ela DEVE ser gravada no histórico da conversa para ficar visível no chat.
+      console.log(`[Webhook Processor] Mensagem enviada pelo WhatsApp oficial (sem eco prévio no CRM), gravando no histórico: ${zapiMessageId}`);
     }
 
     // GUARDA FINAL: Nunca salvar "mensagem" sem conteúdo real.
