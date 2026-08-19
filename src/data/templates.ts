@@ -2,39 +2,36 @@ export const messageTemplates = [
   {
     id: 'tarifario_padrao',
     title: '💰 Tarifário Padrão',
-    text: `TARIFÁRIO
-Standard triplo econômico (03 camas individuais/ sem TV e Sem Frigobar)
+    text: `Tarifário
+
+Standard triplo econômico (03 camas individuais, sem café)
+ 
 Triplo 01 pax - R$135,00
 Triplo 02 pax - R$155,00
 Triplo 03 pax – R$175,00
 
-Standard quádruplo (04 camas individuais/ sem frigobar) 
+Standard quádruplo (04 camas individuais) 
+
 Quádruplo 01 pax - R$ 189,00
 Quádruplo 02 pax - R$ 219,00
 Quádruplo 03 pax – R$ 249,00
 Quádruplo 04 pax - R$ 269,00
-
 Standard Plus (Com frigobar)
+
 Standard Plus individual (01 cama casal) - R$ 189,00
 Standard Plus casal (01 cama casal)  - R$ 209,00
-Standard Plus duplo (02 camas individuais) - R$ 219,00
+Standard Plus duplo (01 cama casal + 01 cama individual) - R$ 219,00
 Standard Plus triplo (01 cama casal + 01 cama individual) - R$ 249,00
 
-Apart Família (ap completo/cama casal + 2 camas individuais)
-Apart Família 01 pax- R$199,00
-Apart Família 02 pax- R$219,00
-Apart Família 03 pax- R$259,00
-Apart Família 04 pax- R$279,00
-
 Superior Luxo
-Luxo individual - R$ 270,00
-Luxo casal - R$ 310,00
-Luxo duplo (02 camas individuais)  - R$ 330,00
+Luxo individual (01 cama casal) - R$ 270,00
+Luxo casal (01 cama casal)  - R$ 310,00
+Luxo duplo (01 cama casal + 01 cama individual)  - R$ 330,00
 Luxo triplo (01 cama casal + 01 cama individual)  - R$ 360,00
 
 • Café da manhã incluso no valor da diária
 
-• Taxa Pet R$50,00.
+• Taxa Pet R$55,00.
 
 • Estacionamento cortesia na categoria Luxo. Demais categorias, acréscimo de R$20,00.`
   },
@@ -218,7 +215,7 @@ Café da manhã
 Segunda a sexta-feira: das 6h30 às 10h
 Sábados, domingos e feriados: das 7h às 10h30
 Almoço
-Segunda a sexta-feira: das 11h30 às 13h30
+Segunda a quinta-feira: das 11h30 às 13h30
  (Solicite o cardápio pelo WhatsApp)
 Jantar
 Segunda a quinta-feira (exceto feriados): das 19h às 22h
@@ -237,6 +234,7 @@ O estacionamento está disponível 24 horas.
 Para acessar, basta pressionar a campainha entre os dois portões e aguardar a abertura do portão de entrada. Pedimos que mantenha distância do portão, pois ele abre para fora.
 
 🦮🐕 PET'S
+•  Tapete higienico extra disponibilizado na recepção no valor de R$5,00, evitem utilizar enxoval de toalhas do hotel para as necessidades dos Pets;
 -Não é permitido deixar seu pet sozinho no quarto;
 -Deve estar sempre na guia;
 •  Sujou? Limpe.
@@ -248,7 +246,13 @@ Check-out: até às 12h (meio-dia)
 🚕 Aplicativos de Corrida
 Para sua conveniência, indicamos o 99 como o aplicativo de corrida, pois oferece mais opções de motoristas e carros na cidade.
 Ao solicitar o carro, verifique se o endereço de partida é: Rua Olavo Bilac, 365.
-Estamos à disposição para tornar sua estadia ainda mais agradável. Qualquer dúvida ou necessidade, não hesite em nos contatar!`
+Estamos à disposição para tornar sua estadia ainda mais agradável. Qualquer dúvida ou necessidade, não hesite em nos contatar!
+
+⚠️ Visitas e Acompanhantes
+Reservas individuais são exclusivas para uma pessoa. A entrada de qualquer pessoa de fora (incluindo acompanhantes) tem uma taxa adicional de R$ 70,00 por dia.
+
+🆔 Identificação Obrigatória
+Por questões de segurança, toda e qualquer pessoa que acessar as dependências do hotel deve, obrigatoriamente, apresentar e cadastrar um documento de identidade com foto na recepção antes de subir ao quarto.`
   },
   {
     id: 'checkin_es',
@@ -354,5 +358,34 @@ Data de Check-In e Check-Out.
 Categoria do apto. 
 CNPJ da empresa. 
 E-mail para envio da Nota Fiscal e o que será faturado (se apenas diárias ou diárias e extras, como jantar, bebidas etc).`
+  },
+  {
+    id: 'eventos',
+    title: '🎪 Eventos',
+    text: `Para informações sobre reservas de salas de reuniões, salões, coffees e orçamentos de eventos, por favor, fale diretamente com nosso setor de eventos, quem irá lhe atender será a Danise.
+
+Clique no link ou adicione o número abaixo para dar continuidade ao seu atendimento:
+👉 https://wa.me/555591437245 (ou envie uma mensagem para 55 55 9143-7245)
+
+Ela terá prazer em te ajudar! 😊`
+  },
+  {
+    id: 'reembolso',
+    title: '💰 Solicitação de Reembolso',
+    text: `Solicitação de reembolso
+
+Encaminhar e-mail para *reservas@p1hotel.com.br com as seguintes informações:
+
+Nome completo do titular da reserva:
+CPF:
+Nº Reserva:
+Data checkin:
+Data checkout:
+Valor Pago: 
+Forma de pagamento:
+Motivo do estorno:
+Chave PIX:
+Banco:
+OBS: Sempre será cobrada uma taxa mínima de 10% de operação. Conforme o caso, poderá ser acrescida taxas de encargos financeiros de acordo com o pagamento efetuado e de  prazos de cancelamentos, conforme o aviso do cancelamento da hospedagem.`
   }
 ];
